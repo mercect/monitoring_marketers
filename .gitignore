@@ -1,0 +1,19 @@
+# Secrets — NEVER commit. On Streamlit Community Cloud these live in the app's
+# Settings -> Secrets box instead. Locally they live in .streamlit/secrets.toml.
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml
+.env
+
+# Real respondent data — this repo holds CODE ONLY.
+*.csv
+*.xlsx
+exports/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+Thumbs.db
+.DS_Store
