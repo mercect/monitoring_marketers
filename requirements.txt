@@ -1,0 +1,6 @@
+# Pinned for Streamlit Community Cloud.
+# streamlit >=1.50: the code uses width="stretch" on st.dataframe, which the
+# older int-only width API does not accept. Capped below 2.0 because a major
+# bump is a real break risk.
+streamlit>=1.50,<2
+pandas>=2.0,<3

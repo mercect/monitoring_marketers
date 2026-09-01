@@ -534,7 +534,7 @@ with tab_action:
             if rows.empty:
                 st.caption("Nothing in this queue right now.")
             else:
-                st.dataframe(yesno(rows), use_container_width=True, hide_index=True)
+                st.dataframe(yesno(rows), width="stretch", hide_index=True)
                 st.caption(SHIFT_LEGEND)
 
         # non-exclusive overlay: WhatsApp outreach (these pids also appear above)
@@ -551,7 +551,7 @@ with tab_action:
                            "total_attempts", "shifts_to_try", "numbers_tried_of_available",
                            "last_comment"]
                 st.dataframe(yesno(wa[[c for c in wa_cols if c in wa.columns]]),
-                             use_container_width=True, hide_index=True)
+                             width="stretch", hide_index=True)
 
     # Not yet assigned — recruited but never worked. Built from `summary`, so it
     # renders whether or not any calls exist. NOTE: the sample tab has no explicit
@@ -573,11 +573,11 @@ with tab_action:
                                "number_of_phone_numbers", "phone_sample_status",
                                "own_phone", "phones_provided", "rec_signup"]
                    if c in new_cases.columns]
-        st.dataframe(yesno(new_cases[newcols]), use_container_width=True, hide_index=True)
+        st.dataframe(yesno(new_cases[newcols]), width="stretch", hide_index=True)
         st.caption("Recruited respondents not yet worked — the pool to assign.")
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
-        st.dataframe(subs, use_container_width=True, hide_index=True)
+        st.dataframe(subs, width="stretch", hide_index=True)
 
 # ============================================================================
 # TAB 3 — BY ENUMERATOR (what's on each plate now + historic effort)
@@ -784,7 +784,7 @@ with tab_archive:
         if route_col:
             base.insert(2, route_col)
         acols = [c for c in base if c in arch.columns]
-        st.dataframe(yesno(arch[acols]), use_container_width=True, hide_index=True)
+        st.dataframe(yesno(arch[acols]), width="stretch", hide_index=True)
 
 # ============================================================================
 # FOOTER — what this page is built from

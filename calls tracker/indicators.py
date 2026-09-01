@@ -154,5 +154,5 @@ def render_indicators(summary, route_col):
         with col:
             st.markdown(f"**Attrition {'A' if elig.endswith('1') else 'B'} — eligible base**")
             d, n_prog, n_not, base = _disp_summary(recruit_base[recruit_base[elig] == 0])
-            st.dataframe(d, use_container_width=True, hide_index=True)
+            st.dataframe(d, width="stretch", hide_index=True)
             st.caption(f"Not counted: {n_prog} in progress · {n_not} not called (of {base} eligible).")
