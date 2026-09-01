@@ -508,6 +508,15 @@ def _bool(series):
 #   + HISTORY AGGREGATE (across ALL of the respondent's attempts).
 # =============================================================================
 
+# Every latest-submission column summarize() emits. Guaranteed present even when
+# there are no attempts at all, so downstream code can rely on them existing.
+LATEST_STATE_COLS = (
+    "current_status", "current_callcode", "enumerator", "last_submission_time",
+    "last_comment", "rsd_reason", "sup_attempt", "refuse_why", "call_length_min",
+    "last_section_n", "last_section", "tab_id", "callback_due", "callback_by",
+    "retake_mode", "d02_check", "d04_yn", "first_attempt_time",
+)
+
 # Covariate columns we can reconstruct a frame from when no sample tab is set.
 FRAME_PASSTHRU = [
     "resp_name", "first_name", "firstname_inperson", "surname_inperson",
@@ -714,8 +723,13 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
     for c in [c for c in add if c != "pid"]:
         if out[c].dtype == object:
             out[c] = out[c].fillna("")
-    if "current_status" not in out.columns:
-        out["current_status"] = ""
+    # With ZERO attempts there is no `cases` frame to merge, so none of the
+    # latest-submission columns get created and anything reading them raises
+    # KeyError. A roster with no calls logged yet is a legitimate state - a fresh
+    # sample, or a cleared attempts tab - so emit the full column set regardless.
+    for _c in LATEST_STATE_COLS:
+        if _c not in out.columns:
+            out[_c] = ""
 
     # ---- ever called / never-called defaults ---------------------------------
     # EVER ATTEMPTED = the pid was attempted at least once. Not "has a submission":

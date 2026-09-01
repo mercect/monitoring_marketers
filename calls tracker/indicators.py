@@ -8,7 +8,16 @@ import streamlit as st
 
 from rollup import (summary_kpis, recruit_eligible, recruit_exclusions,
                     _signup_class, _first_col, ELIG_FLAG_LABELS,
-                    SIGNUP_STATUS_COLS)
+                    SIGNUP_STATUS_COLS, STAGE2_CALLCODES, SIGNED_UP_STATUS)
+
+
+def _formula(*lines):
+    """Show the literal definition of the indicator above, as code.
+
+    Built from the same constants the calculation uses, so the definition on
+    screen cannot drift away from what the numbers actually do."""
+    st.caption("**How it is calculated**")
+    st.code(chr(10).join(lines), language="text")
 
 
 def render_indicators(summary, route_col):
@@ -82,6 +91,30 @@ def render_indicators(summary, route_col):
                        help=f"{row['eligible sign-ups']} / {row['base (denominator)']}")
         st.dataframe(pd.DataFrame(stages), width="stretch", hide_index=True)
 
+        # Take the determinant names from recruit_exclusions itself, not from
+        # ELIG_FLAG_LABELS: the phone-based ones ("no phone number", "no number is
+        # their own") are derived from the phone-count columns and are not in that
+        # dict, so listing the dict alone silently omitted the two largest reasons.
+        _ex1 = recruit_exclusions(recruit_base, stage=1)
+        _dets = ", ".join(_ex1.columns)
+        _s2 = ", ".join(sorted(STAGE2_CALLCODES))
+        _formula(
+            f"signed_up  = {status_col} is \"Eligible - signed up\"",
+            f"refusal    = {status_col} is \"Eligible - refused\"",
+            "",
+            "eligible_signups(Stage I)  = signed_up AND no determinant fired",
+            f"eligible_signups(Stage II) = Stage I AND current_callcode NOT IN ({_s2})",
+            "",
+            "recruitment rate = eligible_signups / (eligible_signups + refusals)",
+            "",
+            f"determinants = {_dets}",
+            "               (any ONE of them screens the respondent out; they overlap,",
+            "                and a blank flag is NOT read as a 0)",
+            "",
+            "NB refusals stay in the denominator at both stages, so the two rates",
+            "   differ only through the numerator.",
+        )
+
         # Why people fall out of the base, one row per determinant. Counted over
         # the sign-ups only: refusals and missing are never screened (see above).
         ex2 = recruit_exclusions(recruit_base, stage=2)[signed]
@@ -124,6 +157,21 @@ def render_indicators(summary, route_col):
     ac[1].metric("Attrition B (conservative)",
                  f"{ak['def_b']['rate']}%  ({ak['def_b']['attrited']}/{ak['def_b']['base']})")
 
+    _formula(
+        "attrited = current_status is INACTIVE AND is_complete = 0",
+        "           (a case that closed without an interview)",
+        "",
+        "base A   = ineligible_type1 = 0     rate A = attrited / base A",
+        "base B   = ineligible_type2 = 0     rate B = attrited / base B",
+        "",
+        "ineligible_type1 = the recruitment determinants (demographics, no phone)",
+        "ineligible_type2 = type1 PLUS the call outcomes that show the person was",
+        "                   never reachable / not the right one",
+        "",
+        "NOT counted as attrition: never-attempted pids, and pids still open.",
+        "Completion is terminal, so a completed pid is never attrited.",
+    )
+
     # One name for the never-attempted bucket, used by the mask AND by the two
     # filters below. They were separate string literals and drifted apart when
     # "Not called" was renamed: the filters kept matching the old text, so every
@@ -155,6 +203,20 @@ def render_indicators(summary, route_col):
 
     st.caption("Resolved disposition of the eligible base (% of eligible base). Attrition = "
                "the closure rows (Refusal / Wrong number / Incorrect respondent / Other closure).")
+    _formula(
+        "one disposition per pid, FIRST match wins (top to bottom):",
+        "",
+        "  Not attempted          ever_attempted = 0",
+        "  In progress            current_status is ACTIVE or PENDING",
+        "  Completed              is_complete = 1",
+        "  Refusal                current_callcode = 0_R",
+        "  Wrong number           current_callcode = 0_WN",
+        "  Incorrect respondent   current_callcode = 0_IN",
+        "  Other closure          anything else that is closed",
+        "",
+        "'Not attempted' and 'In progress' are excluded from the table - they are",
+        "unresolved, not outcomes. % is of the whole eligible base.",
+    )
     la, lb = st.columns(2)
     for col, elig in [(la, "ineligible_type1"), (lb, "ineligible_type2")]:
         with col:
