@@ -7,7 +7,8 @@ import pandas as pd
 import streamlit as st
 
 from rollup import (summary_kpis, recruit_eligible, recruit_exclusions,
-                    _signup_class, ELIG_FLAG_LABELS)
+                    _signup_class, _first_col, ELIG_FLAG_LABELS,
+                    SIGNUP_STATUS_COLS)
 
 
 def render_indicators(summary, route_col):
@@ -30,10 +31,14 @@ def render_indicators(summary, route_col):
     recruit_base = summary
     if route_col and rec_pick and len(rec_pick) != len(rec_routes):
         recruit_base = summary[summary[route_col].isin(rec_pick)]
-    if "rec_signup" in recruit_base.columns:
-        # rec_signup is now ONLY the sign-up indicator (Sign Up / Refusal /
-        # Missing). Every eligibility determinant is its own variable on the
-        # sample tab and is applied here, not read off rec_signup.
+    status_col = _first_col(recruit_base, SIGNUP_STATUS_COLS)
+    if status_col:
+        # Sign-up status is read off `phone_sample_status` (2026-08 data-entry
+        # sheet) or `rec_signup` (earlier roster). Every eligibility determinant
+        # is its own variable on the sample tab and is applied here, not read off
+        # the status — except that `phone_sample_status = "Not eligible"` says
+        # only that some determinant fired, so those rows are classed as sign-ups
+        # and then removed by the determinants themselves.
         sg = _signup_class(recruit_base)
         signed, refusal, missing = (sg == "signup"), (sg == "refusal"), (sg == "missing")
         n_ref, n_miss = int(refusal.sum()), int(missing.sum())
@@ -43,9 +48,11 @@ def render_indicators(summary, route_col):
             "stages. Same formula throughout — only the eligibility screen widens:"
         )
         st.markdown(
-            "- **Stage I — after data entry.** Eligible sign-ups exclude anyone with no "
-            "phone number, no number of their own, underage, living outside the Western "
-            "Area, disabled, or with a language issue."
+            "- **Stage I — after data entry.** Eligible sign-ups exclude anyone screened "
+            "out by a recruitment determinant on the sample tab — no phone number, no "
+            "number of their own, underage, living outside the Western Area, deaf or mute, "
+            "a language issue, seated in row X, or not a passenger card. The determinants "
+            "actually present on your sheet are listed in the breakdown below."
         )
         st.markdown(
             "- **Stage II — after phone calls.** All of the above, **plus** pids the calls "
@@ -91,13 +98,15 @@ def render_indicators(summary, route_col):
             f"**{n_miss} missing** sign-up status. Blank flags are **not** read as 0 — a "
             "respondent with no value recorded stays eligible."
         )
-        _absent = [c for c in ELIG_FLAG_LABELS if c not in recruit_base.columns]
+        _absent = [(label, cols) for label, cols in ELIG_FLAG_LABELS.items()
+                   if not _first_col(recruit_base, cols)]
         if _absent:
             st.warning("Not on the sample tab, so contributing **0 exclusions**: "
-                       + ", ".join(f"`{c}` ({ELIG_FLAG_LABELS[c]})" for c in _absent)
+                       + ", ".join(f"{label} (`{cols[0]}`)" for label, cols in _absent)
                        + ". Add the column and it is applied automatically.")
     else:
-        st.info("No `rec_signup` column found on the sample tab.")
+        st.info("No sign-up status column found on the sample tab — expected one of "
+                + ", ".join(f"`{c}`" for c in SIGNUP_STATUS_COLS) + ".")
 
     # ---- Attrition (roster-level, shares the recruitment route filter) ----------
     st.divider()
@@ -124,7 +133,7 @@ def render_indicators(summary, route_col):
         d = d.mask(cc == "0_R", "Refusal")
         d = d.mask(df["is_complete"] == 1, "Completed")
         d = d.mask(su.isin(["ACTIVE", "PENDING"]), "In progress")
-        d = d.mask(df["ever_called"] == 0, "Not called")
+        d = d.mask(df["ever_attempted"] == 0, "Not attempted")
         return d
 
     def _disp_summary(df):

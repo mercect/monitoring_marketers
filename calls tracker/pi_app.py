@@ -28,7 +28,7 @@ require_password("🔒 PI Dashboard")
 st.title("📊 PI Dashboard — Survey Indicators")
 
 try:
-    subs, sample, cases, summary, source, sample_source = load_all()
+    subs, sample, cases, summary, meta = load_all()
 except Exception as e:
     st.error(f"Could not load / roll up the data.\n\n{e}")
     st.stop()
@@ -43,8 +43,11 @@ if right.button("🔄 Refresh now"):
     st.cache_data.clear()
     st.rerun()
 
-st.caption(f"Attempts: {source}  ·  Sample: {sample_source}  ·  "
-           f"{len(summary)} pids  ·  {len(subs)} call attempts.")
+_a, _s = meta["attempts"], meta["sample"]
+st.caption(f"Attempts: {_a['tab']} ({_a['rows']} rows)  ·  "
+           f"Sample: {_s['tab']} ({_s['rows']} rows)  ·  "
+           f"{len(summary)} pids  ·  {len(subs)} call attempts  ·  "
+           f"read {_a['read']}, rollup logic {meta['code_stamp']}.")
 
 tab_ind, = st.tabs(["📊 Indicators"])
 
