@@ -111,8 +111,11 @@ def open_with_buckets(cases, summary):
         f"{SHIFTS_MOST}+/5 shifts": many_shifts & esc_worked,
         f">{ATTEMPTS_MAX} attempts": many_att & esc_worked,
     })
-    oc["review_reason"] = _why.apply(
-        lambda r: " + ".join(_why.columns[r.values]), axis=1)
+    # A list comprehension, NOT _why.apply(..., axis=1): on an EMPTY frame apply
+    # returns a DataFrame rather than a Series, and assigning that to a single
+    # column raises. Zero open cases is normal (every queue filtered out, or a
+    # roster with nothing open), so this path has to survive it.
+    oc["review_reason"] = [" + ".join(_why.columns[row]) for row in _why.values]
     oc.loc[esc_overdue | esc_worked, "action_bucket"] = "Review"
     # non-exclusive overlay: an open 2_ pid attempted >= 3 times should also be tried
     # on WhatsApp (it still shows in its primary queue too).
