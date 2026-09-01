@@ -8,7 +8,8 @@ import streamlit as st
 
 from rollup import (summary_kpis, recruit_eligible, recruit_exclusions,
                     _signup_class, _first_col, ELIG_FLAG_LABELS,
-                    SIGNUP_STATUS_COLS, STAGE2_CALLCODES, SIGNED_UP_STATUS)
+                    SIGNUP_STATUS_COLS, STAGE2_CALLCODES, SIGNED_UP_STATUS,
+                    ineligible_columns)
 
 
 def _formula(*lines):
@@ -131,12 +132,19 @@ def render_indicators(summary, route_col):
             f"**{n_miss} missing** sign-up status. Blank flags are **not** read as 0 — a "
             "respondent with no value recorded stays eligible."
         )
-        _absent = [(label, cols) for label, cols in ELIG_FLAG_LABELS.items()
-                   if not _first_col(recruit_base, cols)]
-        if _absent:
-            st.warning("Not on the sample tab, so contributing **0 exclusions**: "
-                       + ", ".join(f"{label} (`{cols[0]}`)" for label, cols in _absent)
-                       + ". Add the column and it is applied automatically.")
+        _found = ineligible_columns(recruit_base)
+        if _found:
+            st.caption("Determinants are **every `ineligible_*` column on the data entry "
+                       "tab**, discovered automatically — currently "
+                       + ", ".join(f"`{c}`" for c in _found)
+                       + ". Add a new one to the sheet and it is applied here with no "
+                       "code change. (`ineligible_type1` / `ineligible_type2` are "
+                       "computed FROM these and are deliberately not counted as "
+                       "determinants.)")
+        else:
+            st.warning("No `ineligible_*` columns found on the sample tab, so **no "
+                       "determinant is screening anyone out**. Falling back to the older "
+                       "`is_*` flags if present.")
     else:
         st.info("No sign-up status column found on the sample tab — expected one of "
                 + ", ".join(f"`{c}`" for c in SIGNUP_STATUS_COLS) + ".")

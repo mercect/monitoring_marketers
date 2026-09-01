@@ -203,6 +203,39 @@ def _no_own_number(df, provided):
     return pd.to_numeric(_s(df, "own_phone"), errors="coerce") == 0
 
 
+# ineligible_type1 / ineligible_type2 are COMPUTED by summarize() from these very
+# exclusions, so they must never be read back in as determinants - that would be
+# circular. They are also absent from the data entry tab, which is the real source.
+DERIVED_INELIGIBLE = ("ineligible_type1", "ineligible_type2")
+
+
+def ineligible_columns(df: pd.DataFrame) -> list:
+    """Every recruitment determinant on the frame: the data entry tab's
+    ineligible_* columns, minus the two derived ones."""
+    return sorted(c for c in df.columns
+                  if c.startswith("ineligible_") and c not in DERIVED_INELIGIBLE)
+
+
+# Readable names for the determinants we know about. A column that is not listed
+# still works - it is discovered and labelled from its own name - so a new
+# determinant on the data entry tab needs no code change, just a nicer label here
+# if you want one.
+INELIGIBLE_LABELS = {
+    "ineligible_underage": "underage",
+    "ineligible_outside_western_area": "outside Western Area",
+    "ineligible_no_owned_phone": "no phone of their own",
+    "ineligible_row_x": "seated in row X",
+    "ineligible_language_barrier": "language barrier",
+    "ineligible_deaf_mute": "deaf or mute",
+    "ineligible_nonpassenger_card": "not a passenger card",
+}
+
+
+def _elig_label(col: str) -> str:
+    """Readable name for a determinant column, falling back to the column name."""
+    return INELIGIBLE_LABELS.get(col, col[len("ineligible_"):].replace("_", " ").strip() or col)
+
+
 def recruit_exclusions(df: pd.DataFrame, stage: int = 1) -> pd.DataFrame:
     """One boolean column per exclusion reason, so the app can count each reason
     on its own AND take .any(axis=1) for the overall mask.
@@ -210,14 +243,24 @@ def recruit_exclusions(df: pd.DataFrame, stage: int = 1) -> pd.DataFrame:
     Blanks are NOT read as 0 - a missing flag leaves the respondent eligible,
     which matters because refusals carry no phone/demographic data at all."""
     x = pd.DataFrame(index=df.index)
-    prov = pd.to_numeric(
-        _s(df, _first_col(df, PHONE_COUNT_COLS) or PHONE_COUNT_COLS[-1]), errors="coerce")
-    x["no phone number"] = prov == 0
-    # Kept disjoint from the column above so the breakdown doesn't count one
-    # person twice.
-    x["no number is their own"] = _no_own_number(df, prov) & (prov != 0)
-    for label, cols in ELIG_FLAG_LABELS.items():
-        x[label] = _truthy(_s(df, _first_col(df, cols) or cols[0]))
+    found = ineligible_columns(df)
+    if found:
+        # EVERY ineligible_* column the data entry tab carries, discovered rather
+        # than listed - a determinant added to the sheet is applied here with no
+        # code change. Labelled from the column name so a new one is readable.
+        for col in found:
+            x[_elig_label(col)] = _truthy(_s(df, col))
+    else:
+        # Older roster: no ineligible_* columns, so fall back to the is_* names
+        # and the phone counts they were paired with.
+        prov = pd.to_numeric(
+            _s(df, _first_col(df, PHONE_COUNT_COLS) or PHONE_COUNT_COLS[-1]), errors="coerce")
+        x["no phone number"] = prov == 0
+        x["no number is their own"] = _no_own_number(df, prov) & (prov != 0)
+        for label, cols in ELIG_FLAG_LABELS.items():
+            col = _first_col(df, cols)
+            if col:
+                x[label] = _truthy(_s(df, col))
     if stage >= 2:
         cc = _s(df, "current_callcode").astype(str).str.strip().str.upper()
         x["not reachable / wrong person (calls)"] = cc.isin(STAGE2_CALLCODES)
