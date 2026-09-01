@@ -433,8 +433,13 @@ with tab_track:
 # TAB 2 — ACTION QUEUES (enumerator view: what to do now, per open case)
 # ============================================================================
 with tab_action:
+    # NB: only the QUEUES depend on `cases` (they are built from call attempts).
+    # "To be assigned" is built from `summary` and is exactly what you need to see
+    # when nothing has been called yet — so it must live OUTSIDE this guard, or a
+    # roster with no submissions shows an empty tab instead of the whole workload.
     if cases.empty:
-        st.warning("No pids match the current filters.")
+        st.info("No calls logged yet for the pids in view — so there are no work "
+                "queues. Everything still to be handed out is listed below.")
     else:
         status = cases["status"].astype(str).str.upper()
 
@@ -548,30 +553,30 @@ with tab_action:
                 st.dataframe(yesno(wa[[c for c in wa_cols if c in wa.columns]]),
                              use_container_width=True, hide_index=True)
 
-        # Not yet assigned — recruited but never worked. NOTE: the sample tab has no
-        # explicit "assigned" column, so "no submission yet" is the proxy for
-        # unassigned.
-        # case_state, not ever_attempted: a pid a supervisor closed with no call
-        # is Archived, and must not reappear here as work to hand out.
-        new_cases = summary[(summary["case_state"] == "Not assigned")
-                            & (summary["eligible_to_call"] == 1)].copy()
-        if keep_pids is not None:
-            new_cases = new_cases[new_cases["pid"].isin(keep_pids)]
-        st.markdown(f"#### 🆕 To be assigned ({len(new_cases)})")
-        st.caption("Eligible sign-ups not yet worked — top priority to assign first, across the day.")
-        if new_cases.empty:
-            st.caption("Every recruited respondent has been worked at least once.")
-        else:
-            # Both roster vintages listed: the 2026-08 data-entry names first,
-            # then the earlier ones. Only the columns actually on the sheet show.
-            newcols = [c for c in ["pid", "route_recruited", "date_recruited",
-                                   "number_of_phone_numbers", "phone_sample_status",
-                                   "own_phone", "phones_provided", "rec_signup"]
-                       if c in new_cases.columns]
-            st.dataframe(yesno(new_cases[newcols]), use_container_width=True, hide_index=True)
-            st.caption("Recruited respondents not yet worked — the pool to assign.")
+    # Not yet assigned — recruited but never worked. Built from `summary`, so it
+    # renders whether or not any calls exist. NOTE: the sample tab has no explicit
+    # "assigned" column, so "no submission yet" is the proxy for unassigned.
+    # case_state, not ever_attempted: a pid a supervisor closed with no call is
+    # Archived, and must not reappear here as work to hand out.
+    new_cases = summary[(summary["case_state"] == "Not assigned")
+                        & (summary["eligible_to_call"] == 1)].copy()
+    if keep_pids is not None:
+        new_cases = new_cases[new_cases["pid"].isin(keep_pids)]
+    st.markdown(f"#### 🆕 To be assigned ({len(new_cases)})")
+    st.caption("Eligible sign-ups not yet worked — top priority to assign first, across the day.")
+    if new_cases.empty:
+        st.caption("Every recruited respondent has been worked at least once.")
+    else:
+        # Both roster vintages listed: the 2026-08 data-entry names first,
+        # then the earlier ones. Only the columns actually on the sheet show.
+        newcols = [c for c in ["pid", "route_recruited", "date_recruited",
+                               "number_of_phone_numbers", "phone_sample_status",
+                               "own_phone", "phones_provided", "rec_signup"]
+                   if c in new_cases.columns]
+        st.dataframe(yesno(new_cases[newcols]), use_container_width=True, hide_index=True)
+        st.caption("Recruited respondents not yet worked — the pool to assign.")
 
-    with st.expander("See raw submissions (one row per call attempt)"):
+    with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
         st.dataframe(subs, use_container_width=True, hide_index=True)
 
 # ============================================================================
