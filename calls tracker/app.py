@@ -23,7 +23,8 @@ import pandas as pd
 import streamlit as st
 
 from auth import require_password
-from data_io import load_all, route_column, REFRESH_SECONDS, code_stamp
+from data_io import (load_all, route_column, REFRESH_SECONDS, code_stamp,
+                     EXPECTED_SAMPLE_TAB)
 from rollup import (OPEN_STATUSES, _to_dt, effort_by_enumerator, summary_kpis,
                     eligible_roster, recruit_exclusions,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME)
@@ -146,6 +147,25 @@ try:
 except Exception as e:
     st.error(f"Could not load / roll up the data.\n\n{e}")
     st.stop()
+
+# ---- WRONG-ROSTER GUARD -----------------------------------------------------
+# Reading the wrong sample tab is the one failure that looks completely healthy:
+# every figure computes fine, they are just about the wrong people. Say so loudly
+# and at the top, because nothing further down the page would give it away.
+_sample_tab = meta["sample"]["tab"]
+if _sample_tab != EXPECTED_SAMPLE_TAB:
+    st.error(
+        f"🛑 **Reading the wrong roster tab: `{_sample_tab}`** — "
+        f"expected `{EXPECTED_SAMPLE_TAB}`. Every number on this page is about "
+        "the wrong set of respondents. The page still renders normally, which "
+        "is exactly why this needs saying here."
+    )
+    st.caption(
+        "**Fix:** open this app's ⚙ **Settings → Secrets** and set "
+        "`sample_csv_url` to the link ending in `gid=517204918`. The app "
+        "restarts on its own. Locally the same line lives in "
+        "`dashboard/.streamlit/secrets.toml`."
+    )
 
 # ---- ROSTER: the eligible sign-ups, and nothing else ------------------------
 # The data_entry tab carries the WHOLE recruited roster: eligible sign-ups,

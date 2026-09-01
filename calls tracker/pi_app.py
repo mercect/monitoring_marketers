@@ -16,7 +16,7 @@
 import streamlit as st
 
 from auth import require_password
-from data_io import load_all, route_column
+from data_io import load_all, route_column, EXPECTED_SAMPLE_TAB
 from indicators import render_indicators
 
 st.set_page_config(page_title="PI Dashboard — Indicators", page_icon="📊", layout="wide")
@@ -44,6 +44,10 @@ if right.button("🔄 Refresh now"):
     st.rerun()
 
 _a, _s = meta["attempts"], meta["sample"]
+if _s["tab"] != EXPECTED_SAMPLE_TAB:
+    st.error(f"🛑 **Reading the wrong roster tab: `{_s['tab']}`** — expected "
+             f"`{EXPECTED_SAMPLE_TAB}`. Every figure below is about the wrong "
+             "respondents. Fix `sample_csv_url` in ⚙ Settings → Secrets.")
 st.caption(f"Attempts: {_a['tab']} ({_a['rows']} rows)  ·  "
            f"Sample: {_s['tab']} ({_s['rows']} rows)  ·  "
            f"{len(summary)} pids  ·  {len(subs)} call attempts  ·  "

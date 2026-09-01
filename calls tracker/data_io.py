@@ -21,6 +21,11 @@ REFRESH_SECONDS = 300
 # gid -> human name, so the dashboards can say WHICH tab they are showing.
 # A gid that isn't listed still prints as `gid=<n>`, so an unknown tab is
 # visible rather than silently anonymous.
+# The tab the roster is SUPPOSED to come from. Anything else is almost certainly
+# a stale secrets entry — most likely data_entry_archived, the previous roster,
+# which still loads fine and quietly reports the wrong sample.
+EXPECTED_SAMPLE_TAB = "data_entry"
+
 TAB_NAMES = {
     "249772860": "phone_survey",
     "517204918": "data_entry",
