@@ -124,6 +124,12 @@ def render_indicators(summary, route_col):
     ac[1].metric("Attrition B (conservative)",
                  f"{ak['def_b']['rate']}%  ({ak['def_b']['attrited']}/{ak['def_b']['base']})")
 
+    # One name for the never-attempted bucket, used by the mask AND by the two
+    # filters below. They were separate string literals and drifted apart when
+    # "Not called" was renamed: the filters kept matching the old text, so every
+    # never-attempted pid was counted as a RESOLVED disposition.
+    NOT_ATTEMPTED, IN_PROGRESS = "Not attempted", "In progress"
+
     def _disposition(df):
         cc = df["current_callcode"].astype(str).str.strip()
         su = df["current_status"].astype(str).str.upper()
@@ -132,16 +138,16 @@ def render_indicators(summary, route_col):
         d = d.mask(cc == "0_WN", "Wrong number")
         d = d.mask(cc == "0_R", "Refusal")
         d = d.mask(df["is_complete"] == 1, "Completed")
-        d = d.mask(su.isin(["ACTIVE", "PENDING"]), "In progress")
-        d = d.mask(df["ever_attempted"] == 0, "Not attempted")
+        d = d.mask(su.isin(["ACTIVE", "PENDING"]), IN_PROGRESS)
+        d = d.mask(df["ever_attempted"] == 0, NOT_ATTEMPTED)
         return d
 
     def _disp_summary(df):
         disp = _disposition(df)
         base = len(df)
         n_prog = int((disp == "In progress").sum())
-        n_not = int((disp == "Not called").sum())
-        resolved = disp[~disp.isin(["In progress", "Not called"])]
+        n_not = int((disp == NOT_ATTEMPTED).sum())
+        resolved = disp[~disp.isin([IN_PROGRESS, NOT_ATTEMPTED])]
         vc = resolved.value_counts()
         d = vc.rename_axis("disposition").reset_index(name="pids")
         d["%"] = ((100 * d["pids"] / base).round().astype(int).astype(str) + "%") if base else "0%"
@@ -155,4 +161,5 @@ def render_indicators(summary, route_col):
             st.markdown(f"**Attrition {'A' if elig.endswith('1') else 'B'} — eligible base**")
             d, n_prog, n_not, base = _disp_summary(recruit_base[recruit_base[elig] == 0])
             st.dataframe(d, width="stretch", hide_index=True)
-            st.caption(f"Not counted: {n_prog} in progress · {n_not} not called (of {base} eligible).")
+            st.caption(f"Not counted: {n_prog} in progress · {n_not} not attempted "
+                       f"(of {base} eligible).")
