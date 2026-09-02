@@ -46,6 +46,7 @@ FLAG_COLS = {
     "ineligible_underage", "ineligible_outside_western_area", "ineligible_no_owned_phone",
     "ineligible_row_x", "ineligible_language_barrier", "ineligible_deaf_mute",
     "ineligible_nonpassenger_card", "recontacted_after_complete", "was_partialsaved",
+    "active_partialsave",
 }
 
 
@@ -86,10 +87,14 @@ def open_with_buckets(cases, summary):
     # merged in here or the queues cannot show them. ever_rescheduled /
     # ever_dropped were merged in for the Callback queue alone and are no longer
     # used, so they are gone.
+    # NB: `active_partialsave` is NOT pulled in here. It already rides on `cases`
+    # (rollup derives it from the case's own callcode), so merging the summary's
+    # copy too would collide into active_partialsave_x/_y and disappear from every
+    # table that names it - the same trap documented for was_partialsaved.
     eff = summary[[c for c in
                    ["pid", "total_attempts", "shifts_covered_n", "shifts_to_try",
                     "numbers_tried_of_available", "times_rescheduled", "times_dropped",
-                    "times_noanswer", "times_off", "was_partialsaved",
+                    "times_noanswer", "times_off",
                     "last_section", "tab_id", "last_comment"]
                    if c in summary.columns]]
     oc = oc.merge(eff, on="pid", how="left")
@@ -118,6 +123,16 @@ def open_with_buckets(cases, summary):
     # roster with nothing open), so this path has to survive it.
     oc["review_reason"] = [" + ".join(_why.columns[row]) for row in _why.values]
     oc.loc[esc_overdue | esc_worked, "action_bucket"] = "Review"
+    # non-exclusive overlay: the Resume queue is every pid STILL holding a partial
+    # save (last submission a 4_* - see rollup.is_active_partialsave) plus the
+    # code-based Resume bucket (3_D). An overlay rather than a bucket because a
+    # 4_SC partial also carries a scheduled callback time and belongs in the
+    # Callback list too, and a partial escalated for review has to stay visible
+    # here as well. `action_bucket` remains the exclusive partition the monitoring
+    # summary totals on, so nothing is double-counted there.
+    _aps = (pd.to_numeric(oc["active_partialsave"], errors="coerce").fillna(0)
+            if "active_partialsave" in oc.columns else pd.Series(0, index=oc.index))
+    oc["resume_queue"] = ((oc["action_bucket"] == "Resume") | (_aps == 1)).astype(int)
     # non-exclusive overlay: an open 2_ pid attempted >= 3 times should also be tried
     # on WhatsApp (it still shows in its primary queue too).
     oc["whatsapp"] = (oc["callcode"].astype(str).str.startswith("2_") & (ta >= 3)).astype(int)
@@ -193,7 +208,7 @@ TAB_LEGEND = """
 - **🧾 Calls summary** — indicators + what's active / inactive
 - **✅ Active pids** — open pids to work, grouped by what to do
 - **🗄️ Inactive pids** — closed pids
-- **💾 Partial saves** — which tablet each held partial is sitting on
+- **💾 Partial saves** — which tablet each **still-held** partial is sitting on
 - **👤 By enumerator** — what's on each plate now, + calls made
 - **📋 Tracking sheet** — one row per pid, full detail
 """
@@ -336,6 +351,10 @@ with tab_summary:
     ocb = open_with_buckets(cases, summary)
     cnt = ocb["action_bucket"].value_counts() if len(ocb) else pd.Series(dtype=int)
     n_followup, n_resume = int(cnt.get("Callback", 0)), int(cnt.get("Resume", 0))
+    # What the Resume queue actually LISTS: held partials + 3_D, overlapping the
+    # other rows. Shown in the table so the count matches the tab; `n_resume` (the
+    # exclusive bucket) is what `actionable` totals on, so nothing double-counts.
+    n_resume_shown = int(ocb["resume_queue"].sum()) if len(ocb) else 0
     n_keep, n_review = int(cnt.get("Keep calling", 0)), int(cnt.get("Review", 0))
     n_assign = int(((summary_view["case_state"] == "Not assigned")
                     & (summary_view["eligible_to_call"] == 1)).sum())
@@ -347,7 +366,9 @@ with tab_summary:
     _mon_rows = [
         ("To be followed up", n_followup,
          "reschedules or drops — a callback time was set or the call dropped"),
-        ("To be resumed", n_resume, "the survey was held mid-way to resume"),
+        ("To be resumed (partial saved)", n_resume_shown,
+         "a half-finished interview is still sitting on a tablet — the last submission "
+         "is a 4_ (overlaps the rows above: a 4_SC also has a callback time)"),
         ("To be assigned", n_assign, "not attempted yet"),
         ("To keep calling", n_keep,
          "no answer / phone off, or wrong number / incorrect respondent with other numbers to try"),
@@ -454,7 +475,11 @@ with tab_action:
             "Keep calling": "Keep dialing (no-answer / phone-off), or try the other numbers "
                             "on file (wrong number / incorrect respondent). Watch shifts "
                             "tried and total attempts.",
-            "Resume": "Keep trying to resume; if you can't, hand the pid to another enumerator.",
+            "Resume": "A half-finished interview is still sitting on someone's tablet. Keep "
+                      "trying to resume it from **that device**; if you can't, hand the pid "
+                      "to another enumerator. **Overlaps the other queues** — a `4_SC` held "
+                      "partial also has a callback time, so it is listed here *and* under "
+                      "⏰ To be followed up.",
             "Review": "Escalations only — overdue callbacks, or pids tried across ≥4 shifts "
                       "OR >8 attempts and still no completion.",
         }
@@ -470,8 +495,12 @@ with tab_action:
             "Keep calling": f"**Codes:** {_codes(CC_KEEP_CALLING)} — no answer / phone "
                             "off, or a wrong number / incorrect respondent with other "
                             "numbers still to try.",
-            "Resume": f"**Codes:** {_codes(CC_RESUME)} — **or any open pid with "
-                      "`was_partialsaved` ticked**, whatever its callcode.",
+            "Resume": "**Codes:** every pid whose **last submission** is a `4_` "
+                      "(`4_D` · `4_SC` · `4_NA` · `4_OF`) — a partial save still held "
+                      f"on a tablet — plus {_codes(CC_RESUME - {c for c in CC_RESUME if c.startswith('4_')})}. "
+                      "A pid stops appearing here the moment a later submission is "
+                      "logged against it (it was resumed, or closed), so this list is "
+                      "only what is **still outstanding**.",
             "Review": "**Not code-based** — any open pid escalated here: an overdue "
                       f"callback (from {_codes(CC_CALLBACK)}), or ≥{SHIFTS_MOST} shifts "
                       f"tried OR >{ATTEMPTS_MAX} attempts with still no completion. Also "
@@ -483,7 +512,7 @@ with tab_action:
         BUCKETS = [
             ("Callback", "⏰ To be followed up"),
             ("Keep calling", "📵 To keep calling"),
-            ("Resume", "▶️ To be resumed"),
+            ("Resume", "▶️ To be resumed (partial saved)"),
             ("Review", "🔎 To be reviewed"),
         ]
         COLS = {
@@ -493,7 +522,7 @@ with tab_action:
                              "total_attempts", "days_open", "last_contact_date",
                              "callback_when", "callback_due", "callback_by",
                              "times_rescheduled", "times_dropped", "times_noanswer",
-                             "times_off", "was_partialsaved", "shifts_to_try",
+                             "times_off", "active_partialsave", "shifts_to_try",
                              "rsd_reason", "last_comment"],
             "Keep calling": ["pid", "enumerator", "status", "callcode",
                              "total_attempts", "days_open", "last_contact_date",
@@ -503,19 +532,22 @@ with tab_action:
             # from tab_id or rs_tab_id, whichever the submission carried.
             "Resume":       ["pid", "enumerator", "status", "callcode",
                              "total_attempts", "days_open", "last_contact_date",
-                             "last_section", "tab_id", "was_partialsaved",
+                             "last_section", "tab_id", "active_partialsave",
                              "times_rescheduled", "times_dropped", "times_noanswer",
                              "times_off", "rsd_reason", "shifts_to_try", "last_comment"],
             "Review":       ["pid", "enumerator", "status", "callcode",
                              "total_attempts", "days_open", "last_contact_date",
-                             "review_reason", "callback_when", "was_partialsaved",
+                             "review_reason", "callback_when", "active_partialsave",
                              "shifts_to_try", "numbers_tried_of_available",
                              "rsd_reason", "last_comment"],
         }
 
         # Open cases laid out down the page, one section per queue.
         for key, label in BUCKETS:
-            rows = open_cases[open_cases["action_bucket"] == key].copy()
+            # Resume reads its non-exclusive overlay (held partials + 3_D), every
+            # other queue reads the exclusive bucket. See open_with_buckets.
+            rows = (open_cases[open_cases["resume_queue"] == 1].copy() if key == "Resume"
+                    else open_cases[open_cases["action_bucket"] == key].copy())
             if key == "Callback":
                 rows = rows.sort_values(["callback_overdue", "callback_due"],
                                         ascending=[False, True])
@@ -683,31 +715,37 @@ with tab_partial:
     st.caption("A partial save is stored **on the tablet it was taken on** — it can "
                "only be resumed from that device. Use this to find which tablet is "
                "holding each half-finished interview, and who to ask for it.")
+    st.caption("**What counts as a partial save:** the pid's **last submission is a "
+               "`4_`** (`4_D` held partial · `4_SC` upcoming reschedule · `4_NA` / "
+               "`4_OF` a further attempt on a held case). This list is what is **still "
+               "outstanding** — the moment anything later is logged against a pid, the "
+               "partial has been resumed or closed and it drops off. A pid that was "
+               "partial-saved earlier in its life but has since moved on does **not** "
+               "appear here; that history lives in `was_partialsaved` on the tracking "
+               "sheet.")
 
     NO_TAB = "⚠️ no tablet id recorded"
-    ps = summary_view[summary_view.get("was_partialsaved", 0) == 1].copy()
+    ps = summary_view[summary_view.get("active_partialsave", 0) == 1].copy()
     if "tab_id" in ps.columns:
         ps["tab_id"] = ps["tab_id"].astype(str).str.strip().replace("", NO_TAB)
     else:
         ps["tab_id"] = NO_TAB
 
     if ps.empty:
-        st.info("**No partial saves recorded.**")
-        _missing = [c for c in ("was_partialsaved", "tab_id")
-                    if c not in summary_view.columns
-                    or summary_view[c].astype(str).str.strip().eq("").all()
-                    or (summary_view.get(c, pd.Series(dtype=str)) == 0).all()]
-        if _missing:
-            st.caption("Note: " + ", ".join(f"`{c}`" for c in _missing) +
-                       " is present in the export but not yet populated, so this tab "
-                       "stays empty until the form starts writing it. Nothing to fix "
-                       "on the dashboard side.")
+        st.info("**No partial saves currently held.** Nothing is sitting half-finished "
+                "on a tablet — every pid's last submission is something other than a "
+                "`4_`.")
+        _ever = int(pd.to_numeric(summary_view.get("was_partialsaved", 0),
+                                  errors="coerce").fillna(0).sum())
+        if _ever:
+            st.caption(f"({_ever} pid(s) were partial-saved at some point but have since "
+                       "been resumed or closed, so they are not listed here.)")
     else:
         n_pids = len(ps)
         n_tabs = int(ps["tab_id"].nunique())
         n_lost = int((ps["tab_id"] == NO_TAB).sum())
         k = st.columns(3)
-        k[0].metric("Partial saves", f"{n_pids}")
+        k[0].metric("Partial saves held now", f"{n_pids}")
         k[1].metric("Tablets holding them", f"{n_tabs}")
         k[2].metric("No tablet id", f"{n_lost}",
                     help="Cannot be traced to a device — the tablet id was not recorded.")
@@ -715,6 +753,27 @@ with tab_partial:
             st.warning(f"⚠️ **{n_lost} partial save(s) carry no tablet id**, so there is "
                        "no way to tell which device holds them. They still need chasing — "
                        "start from the enumerator who last submitted.")
+
+        # A tablet id that is really a callcode or the pid itself. `rs_tab_id` is a
+        # free-text box sitting between two coded questions on the 4_* log, and it
+        # is regularly filled with the wrong thing. Untraceable in practice, so say
+        # so rather than presenting "0_OC" as if it were a device. Nothing is
+        # rewritten - the value shown is what the enumerator typed.
+        _looks_like_cc = ps["tab_id"].str.match(r"^[0-4]_[A-Za-z]{1,4}$|^1$")
+        _is_the_pid = (ps["tab_id"].str.upper().str.strip()
+                       == ps["pid"].astype(str).str.upper().str.strip())
+        _bad = ps[_looks_like_cc | _is_the_pid]
+        if len(_bad):
+            st.warning(
+                f"⚠️ **{len(_bad)} partial save(s) have a tablet id that is not a tablet** "
+                "— a callcode or the pid was typed into the box instead. They cannot be "
+                "traced to a device either; chase the enumerator who last submitted."
+                "\n\n"
+                + "  ·  ".join(f"`{p}` → *{t}* ({e})" for p, t, e in
+                               zip(_bad["pid"], _bad["tab_id"], _bad["enumerator"])))
+            st.caption("This is a **data-entry** problem, not a dashboard one: `rs_tab_id` "
+                       "on the `4_` log is a free-text box and is being filled with the "
+                       "wrong value. Worth a word with the field team.")
 
         # ---- by tablet -------------------------------------------------------
         st.markdown("#### 📱 By tablet")
@@ -743,8 +802,11 @@ with tab_partial:
                                            ascending=[True, False]),
                      width="stretch", hide_index=True)
         st.caption("**enumerator** and **last_submission_time** are the LAST submission "
-                   "on that pid — who touched it most recently, and when. That is not "
-                   "necessarily whoever took the partial save.")
+                   "on that pid — which, because a partial save IS the last submission, "
+                   "is the log that put it on that tablet.")
+        st.caption("**last_section** is how far the interview got before it was held "
+                   "(`rs_section` on the `4_` log). **current_callcode** says which kind "
+                   "of hold it is.")
 
 
 # ============================================================================
@@ -771,6 +833,10 @@ with tab_archive:
     st.caption("**`ineligible_type1`** = respondent is ineligible — under 18 (`d02_check`), "
                "lives outside the Western Area (`d04_yn`), or had no phone at recruitment. "
                "**`is_supervisor`** = Yes when a supervisor closed the pid.")
+    st.caption("**`was_partialsaved`** here is HISTORY — was this pid ever partial-saved "
+               "on the way to being closed. These pids are closed, so nothing is still "
+               "held on a tablet; what is still outstanding is on the **💾 Partial "
+               "saves** tab.")
     st.warning("⚠️ **Supervisors:** review this list regularly and make sure these closed "
                "pids are pulled out of the active calling pile as the days go by — so "
                "respondents who shouldn't be contacted don't keep getting re-attempted.")

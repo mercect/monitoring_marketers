@@ -60,6 +60,54 @@ CC_EXHAUSTED = {"0_WN", "0_IN"}                        # all numbers tried -> cl
 
 
 # =============================================================================
+# ACTIVE PARTIAL SAVE
+# -----------------------------------------------------------------------------
+# A partial save is a half-finished interview sitting on the tablet it was taken
+# on. It only EXISTS while it is still being held, so the question is about the
+# pid's CURRENT state, not its history.
+#
+# The survey logs one through the notification path (survey_id = -3), which is
+# the only producer of 4_* callcodes - 4_D held partial, 4_SC upcoming
+# reschedule, 4_NA / 4_OF a fresh attempt on a case already held. Every one of
+# them asks rs_tab_id ("the ID in which this case is stored as a partial save"),
+# so a 4_* IS a held partial, whichever suffix it carries. Hence:
+#
+#       the LATEST submission's callcode starts with 4_  ->  still partial-saved
+#
+# Anything logged since - a completion (1), a 2_*/3_* call outcome, a supervisor
+# closure - means it was resumed or closed, so it is NOT a partial save any more.
+#
+# NB: this deliberately replaces the old ever-flag test on `was_partialsaved`,
+# which never expired: a pid partial-saved once stayed flagged forever, including
+# after it completed. On the 2026-09 sheet that flagged 6 pids, 3 of them already
+# finished, while missing 9 partials that were genuinely still out there.
+# `was_partialsaved` survives on the summary as HISTORY ("was this ever partial-
+# saved?"), but nothing asking "is there a partial save to chase?" may read it.
+# =============================================================================
+def is_active_partialsave(callcode) -> bool:
+    """True when this callcode means a partial save is STILL held on a device."""
+    return str(callcode).strip().startswith("4_")
+
+
+# rs_section value -> the readable label the enumerator picked (XLSForm choice
+# list `section_partialsave`). A 4_* submission records how far the interview got
+# in rs_section and leaves last_section blank, so the Partial saves tab has to
+# translate it. There is no 5.
+PARTIALSAVE_SECTIONS = {
+    "1": "Section A. Identity confirmation",
+    "2": "Section B. Recall",
+    "3": "Section C. Consent",
+    "4": "Section D. Demographics",
+    "6": "Section P. Purchases",
+    "7": "Section S. Symptoms and drugs purchased/taken",
+    "8": "Section E. Travel and marketer exposure",
+    "9": "Section EO. Economic outcomes",
+    "10": "Section: Pharmacy",
+    "11": "Section M. Marketers",
+}
+
+
+# =============================================================================
 # TEST / DUMMY SUBMISSIONS
 # -----------------------------------------------------------------------------
 # Rows the field team logged while trying the form out. They are NOT observations
@@ -374,21 +422,28 @@ def rollup(submissions: pd.DataFrame, now=None) -> pd.DataFrame:
                                 or _truthy(pd.Series([latest.get("cc_incorrectnums", 0)])).iloc[0])
         new_number = str(latest.get("new_number", "") or latest.get("othercontact_phone", "")).strip()
         has_new_number = int(new_number not in ("", "nan"))
-        # was_partialsaved, as an ever-flag across the pid's submissions. (This
-        # used to read `is_partialsaved`, which is not a column in this export —
-        # so the condition silently never fired and partial saves never reached
-        # the Resume queue on their own.)
-        was_partialsaved = bool(_truthy(
-            g.get("was_partialsaved", pd.Series("", index=g.index))).any())
+        # Is a partial save STILL held on a device? Latest callcode only - see
+        # is_active_partialsave(). This used to be an ever-flag over the whole
+        # history, so it never expired.
+        active_partialsave = is_active_partialsave(callcode)
         weak_lead = int(callcode == "2_OC" and not has_new_number)
 
-        # --- action_bucket (priority order) — open cases only -----------------
+        # --- action_bucket (priority order) - open cases only -----------------
         # Held-up (partial saves) first, then callbacks/drop follow-ups, then the
         # keep-calling pool (no-answer/off + still-have-numbers-to-try); anything
         # else open -> Review (which the app narrows to escalations).
+        #
+        # The Resume test is now purely code-based. It used to be
+        # `was_partialsaved or callcode in CC_RESUME`, which dragged every pid
+        # ever partial-saved into Resume regardless of what happened since.
+        # CC_RESUME already holds 4_D / 4_NA / 4_OF, so every active partial save
+        # lands here EXCEPT 4_SC - which keeps its Callback slot below because it
+        # carries a scheduled time worth sorting on. The app then ALSO lists it
+        # under Resume via the `active_partialsave` overlay, so a held 4_SC shows
+        # in both queues rather than having to pick one.
         bucket = ""
         if open_case or status == "NOTIFICATION":
-            if was_partialsaved or callcode in CC_RESUME:
+            if callcode in CC_RESUME:
                 bucket = "Resume"
             elif callcode in CC_CALLBACK:
                 bucket = "Callback"
@@ -404,6 +459,12 @@ def rollup(submissions: pd.DataFrame, now=None) -> pd.DataFrame:
             "callcode": callcode,
             "attrition_reason": latest.get("attrition_reason", ""),
             "is_complete": int(ever_complete),
+            # Whether a partial save is still out there. Derived from `callcode`,
+            # which is right here on the case row, so it lives on CASES - and
+            # deliberately is NOT merged in from the summary in the app's
+            # open_with_buckets(), or it would collide into
+            # active_partialsave_x/_y and vanish from every table naming it.
+            "active_partialsave": int(active_partialsave),
             # NB: was_partialsaved deliberately lives on the SUMMARY only. Both
             # the action queues and the Inactive tab merge summary onto cases, so
             # carrying it here too would collide into was_partialsaved_x/_y and
@@ -685,6 +746,25 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
             first_att = att["_start"].min() if len(att) else g["_ord"].min()
             last_comment = _lv(latest, "comment_sp") if bool(latest.get("_correction")) \
                 else _lv(latest, "final_comment")
+
+            # ---- active partial save (see is_active_partialsave) -------------
+            # The notification path that emits 4_* records the device in
+            # rs_tab_id and the progress in rs_section, leaving tab_id and
+            # last_section blank on that row. So when the pid is STILL holding a
+            # partial, read both off that latest submission. Scanning the whole
+            # history instead (as this used to) returns a tab_id from some older
+            # submission - a device that is not the one holding it now.
+            active_ps = is_active_partialsave(latest.get("_cc", ""))
+            _hist_tab = (_last_nonempty(g.get("tab_id", pd.Series([], dtype=str)))
+                         or _last_nonempty(g.get("rs_tab_id", pd.Series([], dtype=str))))
+            _hist_section = _last_nonempty(g.get("last_section", pd.Series([], dtype=str)))
+            if active_ps:
+                tab_id = _lv(latest, "rs_tab_id") or _lv(latest, "tab_id") or _hist_tab
+                section = (PARTIALSAVE_SECTIONS.get(_lv(latest, "rs_section"), "")
+                           or _lv(latest, "last_section") or _hist_section)
+            else:
+                tab_id, section = _hist_tab, _hist_section
+
             rows.append({
                 "pid": pid,
                 # ---- current state (latest submission) -----------------------
@@ -704,17 +784,27 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
                 # export where the field is not yet populated shows 0, not noise.
                 "was_partialsaved": int(bool(_truthy(
                     g.get("was_partialsaved", pd.Series("", index=g.index))).any())),
+                # HISTORY vs NOW, kept apart deliberately:
+                #   was_partialsaved   - was this pid EVER partial-saved?
+                #   active_partialsave - is a partial save still held RIGHT NOW?
+                # Only the second one may drive the Partial saves tab or the
+                # Resume queue; the first never expires, so a completed pid stays
+                # flagged forever. See is_active_partialsave().
+                "active_partialsave": int(active_ps),
                 "calls_after_complete": int(_n_after.get(pid, 0)),
                 "recontacted_after_complete": int(_n_after.get(pid, 0) > 0),
                 "last_is_answered": int(bool(latest.get("_answered", False))),
                 "last_is_incorrect": int(bool(latest.get("_incorrect", False))),
                 "last_section_n": _lv(latest, "last_section_n"),
                 # the readable label ("Section D: Demographics"), not the number
-                "last_section": _last_nonempty(
-                    g.get("last_section", pd.Series([], dtype=str))),
+                # For a pid still holding a partial this is rs_section off the
+                # latest 4_* row, translated; otherwise the last non-empty
+                # last_section. Resolved above.
+                "last_section": section,
                 # tab id lives in one of two fields depending on the path taken
-                "tab_id": (_last_nonempty(g.get("tab_id", pd.Series([], dtype=str)))
-                           or _last_nonempty(g.get("rs_tab_id", pd.Series([], dtype=str)))),
+                # rs_tab_id on the 4_* notification path, tab_id on the
+                # reschedule path. Resolved above, latest-4_* first.
+                "tab_id": tab_id,
                 "callback_due": _lv(latest, "callback_due"),
                 "callback_by": _lv(latest, "callback_by"),
                 "retake_mode": _lv(latest, "retake_mode"),
@@ -814,7 +904,7 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
                 "numbers_tried", "numbers_available", "_elig1", "_elig2",
                 # never-called pids have no attempt row, so these arrive NaN
                 "calls_after_complete", "recontacted_after_complete",
-                "was_partialsaved", "ever_attempted"]
+                "was_partialsaved", "active_partialsave", "ever_attempted"]
     for c in int_cols:
         out[c] = pd.to_numeric(_s(out, c), errors="coerce").fillna(0).astype(int)
     out["numbers_tried_of_available"] = (out["numbers_tried"].astype(str) + "/"

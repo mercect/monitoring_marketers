@@ -37,7 +37,11 @@ PHONE_COLS = ["no_phone", "number_of_phone_numbers", "ineligible_no_owned_phone"
 # Known value sets for data-quality checks.
 KNOWN_CALLCODES = {"", "1", "0_R", "0_UN", "0_IN", "0_WN", "0_OC", "0_ATTR",
                    "2_NA", "2_OF", "2_WN", "2_IN", "2_OC", "2_SC", "2_D",
-                   "3_SC", "3_D", "3_NA", "3_OF", "4_SC", "4_D"}
+                   # 4_NA / 4_OF: the notification path with rs_type=3 (a fresh
+                   # attempt on a case already held as a partial save). Real
+                   # codes the form emits - they were missing here, so every
+                   # export carrying one raised a spurious "unknown callcode".
+                   "3_SC", "3_D", "3_NA", "3_OF", "4_SC", "4_D", "4_NA", "4_OF"}
 KNOWN_STATUS = {"", "ACTIVE", "PENDING", "INACTIVE", "NOTIFICATION"}
 KNOWN_REC = {"", "eligible", "ineligible", "refusal", "missing"}
 # phone_sample_status (2026-08 data-entry sheet) — the sign-up status column that
