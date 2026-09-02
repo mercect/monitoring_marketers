@@ -41,8 +41,9 @@ left, right = st.columns([4, 1])
 left.markdown(
     "**📊 Recruitment** — the rate at both eligibility stages, split by trial arm. "
     "**📉 Attrition** — both definitions, by arm, with a day-of-submission filter "
-    "that moves the outcomes without moving the eligible base. Both tabs filter "
-    "by route."
+    "that moves the outcomes without moving the eligible base. **🔧 In Progress** "
+    "— what the calls return day by day, and where to put effort next. All three "
+    "filter by route."
 )
 if right.button("🔄 Refresh now"):
     st.cache_data.clear()
@@ -58,10 +59,9 @@ st.caption(f"Attempts: {_a['tab']} ({_a['rows']} rows)  ·  "
            f"{len(summary)} pids  ·  {len(subs)} call attempts  ·  "
            f"read {_a['read']}, rollup logic {meta['code_stamp']}.")
 
-# The In Progress tab is HIDDEN while it is being worked on — progress.py is
-# still imported and still compiles, so re-enabling it is one line: add
-# "🔧 In Progress" back to this list and un-comment the `with` block below.
-SHOW_IN_PROGRESS = False
+# Flip to False to hide the In Progress tab while it is being reworked; the
+# module stays imported either way, so nothing has to be reverted.
+SHOW_IN_PROGRESS = True
 
 _titles = ["📊 Recruitment", "📉 Attrition"] + (
     ["🔧 In Progress"] if SHOW_IN_PROGRESS else [])
