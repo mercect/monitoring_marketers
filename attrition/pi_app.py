@@ -40,8 +40,9 @@ except Exception as e:
 left, right = st.columns([4, 1])
 left.markdown(
     "**📊 Recruitment** — the rate at both eligibility stages, split by trial arm. "
-    "**📉 Attrition** — both definitions, by arm. Each tab filters by route and by "
-    "day of submission."
+    "**📉 Attrition** — both definitions, by arm, with a day-of-submission filter "
+    "that moves the outcomes without moving the eligible base. Both tabs filter "
+    "by route."
 )
 if right.button("🔄 Refresh now"):
     st.cache_data.clear()
@@ -72,7 +73,7 @@ tab_prog = _tabs[2] if SHOW_IN_PROGRESS else None
 # TAB — RECRUITMENT (the rate at both eligibility stages, by trial arm)
 # ============================================================================
 with tab_rec:
-    render_indicators(summary, subs, route_column(summary))
+    render_indicators(summary, route_column(summary))
 
 # ============================================================================
 # TAB — ATTRITION (both definitions, and the disposition behind each base)

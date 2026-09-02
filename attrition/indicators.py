@@ -65,30 +65,41 @@ def submission_days(subs):
     return day, sorted(x for x in day.unique() if x)
 
 
-def _day_filter(summary, subs, key):
-    """Multiselect over submission days; keeps pids called on those days.
+def last_submission_day(subs):
+    """pid -> the day of its LAST submission.
 
-    Defaults to every day, so the view is unfiltered until a PI narrows it —
-    picking a subset answers "who did we work on these days?", NOT "how did the
-    study stand on these days". A pid that has never been called has no
-    submission day at all, so narrowing drops it from the base entirely; the
-    caption says so, because that silently shrinks the recruitment denominator
-    rather than just hiding rows."""
+    The last submission is the one that produced the pid's current state, so it
+    is the date an outcome belongs to: the day it completed, or the day it was
+    closed."""
+    day, _ = submission_days(subs)
+    order = _s(subs, "SubmissionDate").astype(str)
+    tmp = pd.DataFrame({"pid": subs["pid"], "day": day, "_o": order})
+    tmp = tmp.sort_values("_o").drop_duplicates("pid", keep="last")
+    return dict(zip(tmp["pid"], tmp["day"]))
+
+
+def _day_picker(subs, key):
+    """Multiselect of submission days -> the set of pids resolved on those days.
+
+    Returns None when every day is selected, which means "do not filter at all"
+    — distinct from an empty set, which would mean "nothing qualifies".
+
+    Deliberately does NOT narrow the frame it is used with. Filtering the base
+    by call day would delete every never-called pid and every refusal from the
+    denominator (they have no submission day at all), which sends the rate to
+    100% and answers a question nobody asked. The base stays fixed; only which
+    outcomes fall inside the window moves."""
     day, days = submission_days(subs)
     if not days:
-        return summary
+        return None
     pick = st.multiselect("Filter by day of submission", days, default=days, key=key)
     if not pick or len(pick) == len(days):
-        return summary
-    keep = set(subs.loc[day.isin(pick), "pid"])
-    st.caption(f"⚠️ Narrowed to the {len(keep)} pids with a call on the selected "
-               "day(s). Pids never called have no submission day, so they are out of "
-               "the base entirely — the denominators below are smaller, not just the "
-               "row counts.")
-    return summary[summary["pid"].isin(keep)]
+        return None
+    last = last_submission_day(subs)
+    return {pid for pid, d in last.items() if d in pick}
 
 
-def render_indicators(summary, subs, route_col):
+def render_indicators(summary, route_col):
     """Draw the whole Indicators view.
 
     summary   = one row per pid (sample tab rolled up with the attempts)
@@ -103,7 +114,6 @@ def render_indicators(summary, subs, route_col):
     st.markdown("### Recruitment")
     recruit_base = _route_filter(summary, route_col,
                                  "Filter recruitment by route", "rec_route")
-    recruit_base = _day_filter(recruit_base, subs, "rec_day")
     status_col = _first_col(recruit_base, SIGNUP_STATUS_COLS)
     if status_col:
         # Sign-up status is read off `phone_sample_status` (2026-08 data-entry
@@ -312,7 +322,9 @@ def render_attrition(summary, subs, route_col):
     st.subheader("📉 Attrition")
     base_df = _route_filter(summary, route_col,
                             "Filter attrition by route", "att_route")
-    base_df = _day_filter(base_df, subs, "att_day")
+    # A set of pids resolved inside the chosen days, or None for "all days".
+    # It never touches base_df — see _day_picker on why the base must not move.
+    window = _day_picker(subs, "att_day")
 
     # The asterisk ties the formula to the footnote each subsection prints under
     # it — what "eligible base" actually excludes differs between A and B, and
@@ -350,7 +362,7 @@ def render_attrition(summary, subs, route_col):
         return ([("all", base_df)]
                 + [(a, base_df[base_df[PITCH] == a]) for a in arms])
 
-    def _counts(df, stage, screened_out_codes):
+    def _counts(df, stage, screened_out_codes, window=None):
         """row label -> count, over this frame's slice of the stage's base.
 
         A closing `0_` code does one of two things, decided by the STAGE's base:
@@ -363,11 +375,20 @@ def render_attrition(summary, subs, route_col):
         completed / attrited / in progress are a partition, not three overlapping
         filters — `in progress` is the remainder, so they always sum to the base.
         The attrited children are mutually exclusive (one callcode per pid), so
-        they sum to the attrited parent exactly."""
+        they sum to the attrited parent exactly.
+
+        `window` (a set of pids resolved inside the selected days) narrows which
+        outcomes COUNT, never who is in the base. A pid resolved outside the
+        window is not deleted — it falls back into `in progress`, because as far
+        as the selected days are concerned it has not been resolved yet. So the
+        base holds still and the three buckets still sum to it."""
         base = df[recruit_eligible(df, stage=stage)]
         cc = base["current_callcode"].astype(str).str.strip().str.upper()
         done = base["is_complete"] == 1
         lost = cc.str.startswith("0_") & ~cc.isin(screened_out_codes) & ~done
+        if window is not None:
+            inside = base["pid"].isin(window)
+            done, lost = done & inside, lost & inside
         counted = [c for c in CLOSING_CALLCODE_LABELS
                    if c not in screened_out_codes]
         out = {"completed": int(done.sum()), "attrited": int(lost.sum())}
@@ -400,7 +421,7 @@ def render_attrition(summary, subs, route_col):
             + " — a case closed with any of these, without a completed interview.")
         st.caption(definition)      # the footnote the asterisk points at
 
-        cols = [(name, _counts(df, stage, codes)) for name, df in _slices()]
+        cols = [(name, _counts(df, stage, codes, window)) for name, df in _slices()]
         allc = cols[0][1]
         rows = [r for r in allc if r != BASE_ROW]
         if not allc[OTHER_ROW]:
