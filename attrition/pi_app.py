@@ -20,13 +20,16 @@ from data_io import load_all, route_column, EXPECTED_SAMPLE_TAB
 from indicators import render_indicators, render_attrition
 from progress import render_progress
 
-st.set_page_config(page_title="PI Dashboard — Indicators", page_icon="📊", layout="wide")
+TITLE = "Attrition Pilot August 2026 Marketers"
+
+st.set_page_config(page_title=TITLE, page_icon="📊", layout="wide")
 
 # Password gate — see auth.py. Must come straight after set_page_config, before
 # anything is drawn, so no data leaks onto the page for a signed-out visitor.
-require_password("🔒 PI Dashboard")
+# Named so someone landing on the sign-in screen can tell which study it is.
+require_password(f"🔒 {TITLE}")
 
-st.title("📊 PI Dashboard — Survey Indicators")
+st.title(TITLE)
 
 try:
     # keep=("pitch",) — the PI view breaks recruitment down by trial arm. The
@@ -37,13 +40,7 @@ except Exception as e:
     st.error(f"Could not load / roll up the data.\n\n{e}")
     st.stop()
 
-left, right = st.columns([4, 1])
-left.markdown(
-    "**📊 Recruitment** — the rate at both eligibility stages, split by trial arm. "
-    "**📉 Attrition** — both definitions, by arm, with a day-of-submission filter "
-    "that moves the outcomes without moving the eligible base. Both tabs filter "
-    "by route."
-)
+_, right = st.columns([4, 1])
 if right.button("🔄 Refresh now"):
     st.cache_data.clear()
     st.rerun()
