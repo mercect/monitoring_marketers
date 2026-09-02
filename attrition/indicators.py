@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from rollup import (recruit_eligible, screen_out_masks, screen_out_sources,
-                    _signup_class, _first_col, ELIG_FLAG_LABELS,
+                    _signup_class, _first_col, _s, ELIG_FLAG_LABELS,
                     SIGNUP_STATUS_COLS, NO_PHONE, NO_PHONE_SUBCATS,
                     STAGE_CALLS, STAGE_CALLS_V2, STAGE2_CALLCODES,
                     STAGE2_V2_CALLCODES, CLOSING_CALLCODE_LABELS)
@@ -54,7 +54,41 @@ def _route_filter(summary, route_col, label, key):
     return summary
 
 
-def render_indicators(summary, route_col):
+def submission_days(subs):
+    """Every calendar day that carries a submission, oldest first.
+
+    The enumerator's own `today` leads; SubmissionDate is the fallback so a row
+    with a blank `today` still lands on a day rather than vanishing."""
+    d = _s(subs, "today").astype(str).str.strip()
+    fallback = _s(subs, "SubmissionDate").astype(str).str.strip().str.slice(0, 10)
+    day = d.where(d != "", fallback)
+    return day, sorted(x for x in day.unique() if x)
+
+
+def _day_filter(summary, subs, key):
+    """Multiselect over submission days; keeps pids called on those days.
+
+    Defaults to every day, so the view is unfiltered until a PI narrows it —
+    picking a subset answers "who did we work on these days?", NOT "how did the
+    study stand on these days". A pid that has never been called has no
+    submission day at all, so narrowing drops it from the base entirely; the
+    caption says so, because that silently shrinks the recruitment denominator
+    rather than just hiding rows."""
+    day, days = submission_days(subs)
+    if not days:
+        return summary
+    pick = st.multiselect("Filter by day of submission", days, default=days, key=key)
+    if not pick or len(pick) == len(days):
+        return summary
+    keep = set(subs.loc[day.isin(pick), "pid"])
+    st.caption(f"⚠️ Narrowed to the {len(keep)} pids with a call on the selected "
+               "day(s). Pids never called have no submission day, so they are out of "
+               "the base entirely — the denominators below are smaller, not just the "
+               "row counts.")
+    return summary[summary["pid"].isin(keep)]
+
+
+def render_indicators(summary, subs, route_col):
     """Draw the whole Indicators view.
 
     summary   = one row per pid (sample tab rolled up with the attempts)
@@ -69,6 +103,7 @@ def render_indicators(summary, route_col):
     st.markdown("### Recruitment")
     recruit_base = _route_filter(summary, route_col,
                                  "Filter recruitment by route", "rec_route")
+    recruit_base = _day_filter(recruit_base, subs, "rec_day")
     status_col = _first_col(recruit_base, SIGNUP_STATUS_COLS)
     if status_col:
         # Sign-up status is read off `phone_sample_status` (2026-08 data-entry
@@ -259,7 +294,7 @@ def render_indicators(summary, route_col):
                 + ", ".join(f"`{c}`" for c in SIGNUP_STATUS_COLS) + ".")
 
 
-def render_attrition(summary, route_col):
+def render_attrition(summary, subs, route_col):
     """Draw the Attrition view — its own tab in pi_app.py.
 
     summary   = one row per pid (sample tab rolled up with the attempts)
@@ -277,6 +312,7 @@ def render_attrition(summary, route_col):
     st.subheader("📉 Attrition")
     base_df = _route_filter(summary, route_col,
                             "Filter attrition by route", "att_route")
+    base_df = _day_filter(base_df, subs, "att_day")
 
     # The asterisk ties the formula to the footnote each subsection prints under
     # it — what "eligible base" actually excludes differs between A and B, and

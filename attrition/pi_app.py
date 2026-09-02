@@ -40,9 +40,8 @@ except Exception as e:
 left, right = st.columns([4, 1])
 left.markdown(
     "**📊 Recruitment** — the rate at both eligibility stages, split by trial arm. "
-    "**📉 Attrition** — both definitions, by arm. **🔧 In Progress** — what the "
-    "calls are returning day by day, and where to put effort next. Each tab has "
-    "its own route filter."
+    "**📉 Attrition** — both definitions, by arm. Each tab filters by route and by "
+    "day of submission."
 )
 if right.button("🔄 Refresh now"):
     st.cache_data.clear()
@@ -58,23 +57,32 @@ st.caption(f"Attempts: {_a['tab']} ({_a['rows']} rows)  ·  "
            f"{len(summary)} pids  ·  {len(subs)} call attempts  ·  "
            f"read {_a['read']}, rollup logic {meta['code_stamp']}.")
 
-tab_rec, tab_att, tab_prog = st.tabs(
-    ["📊 Recruitment", "📉 Attrition", "🔧 In Progress"])
+# The In Progress tab is HIDDEN while it is being worked on — progress.py is
+# still imported and still compiles, so re-enabling it is one line: add
+# "🔧 In Progress" back to this list and un-comment the `with` block below.
+SHOW_IN_PROGRESS = False
+
+_titles = ["📊 Recruitment", "📉 Attrition"] + (
+    ["🔧 In Progress"] if SHOW_IN_PROGRESS else [])
+_tabs = st.tabs(_titles)
+tab_rec, tab_att = _tabs[0], _tabs[1]
+tab_prog = _tabs[2] if SHOW_IN_PROGRESS else None
 
 # ============================================================================
 # TAB — RECRUITMENT (the rate at both eligibility stages, by trial arm)
 # ============================================================================
 with tab_rec:
-    render_indicators(summary, route_column(summary))
+    render_indicators(summary, subs, route_column(summary))
 
 # ============================================================================
 # TAB — ATTRITION (both definitions, and the disposition behind each base)
 # ============================================================================
 with tab_att:
-    render_attrition(summary, route_column(summary))
+    render_attrition(summary, subs, route_column(summary))
 
 # ============================================================================
 # TAB — IN PROGRESS (day-to-day monitoring: where to put effort next)
 # ============================================================================
-with tab_prog:
-    render_progress(summary, subs, route_column(summary))
+if SHOW_IN_PROGRESS:
+    with tab_prog:
+        render_progress(summary, subs, route_column(summary))
