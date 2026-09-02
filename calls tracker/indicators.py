@@ -9,7 +9,7 @@ import streamlit as st
 from rollup import (summary_kpis, recruit_eligible, recruit_exclusions,
                     _signup_class, _first_col, ELIG_FLAG_LABELS,
                     SIGNUP_STATUS_COLS, STAGE2_CALLCODES, SIGNED_UP_STATUS,
-                    ineligible_columns)
+                    CALL_OUTCOME_EXCLUSIONS, ineligible_columns)
 
 
 def _formula(*lines):
@@ -54,43 +54,50 @@ def render_indicators(summary, route_col):
         n_ref, n_miss = int(refusal.sum()), int(missing.sum())
 
         st.markdown(
-            "**Recruitment rate = Signed Up ÷ (Signed Up + Refusals)**, reported at two "
-            "stages. Same formula throughout — only the eligibility screen widens:"
+            "**Recruitment rate = Eligible sign-ups ÷ (Eligible sign-ups + Refusals).**"
         )
         st.markdown(
-            "- **Stage I — after data entry.** Eligible sign-ups exclude anyone screened "
-            "out by a recruitment determinant on the sample tab — no phone number, no "
+            "**Eligible sign-ups** are the people who signed up and were not screened out. "
+            "Two kinds of thing screen someone out, and both count the same way — every "
+            "one of them is itemised in **Who is screened out of the base** below:"
+        )
+        st.markdown(
+            "- **Recruitment determinants**, from the sample tab — no phone number, no "
             "number of their own, underage, living outside the Western Area, deaf or mute, "
-            "a language issue, seated in row X, or not a passenger card. The determinants "
-            "actually present on your sheet are listed in the breakdown below."
+            "a language issue, seated in row X, or not a passenger card."
         )
         st.markdown(
-            "- **Stage II — after phone calls.** All of the above, **plus** pids the calls "
-            "closed as `0_WN` wrong number, `0_IN` incorrect respondent, `0_NA` no answer "
-            "or `0_OF` phone off — people who turned out never to be reachable."
+            "- **Call outcomes** that closed the pid as never reachable or not the right "
+            "person — `0_WN` wrong number, `0_IN` incorrect respondent, `0_NA` no answer, "
+            "`0_OF` phone off."
         )
         st.markdown(
-            "**Refusals stay in the denominator at both stages** (assumed they would have "
-            "been eligible — they leave no phone or demographic data to screen on), so the "
-            "two rates differ only through the numerator."
+            "**Refusals stay in the denominator** — they leave no phone or demographic "
+            "data to screen on, so they are assumed to have been eligible."
         )
 
-        stages = []
-        for stage, label in [(1, "Stage I — after data entry"),
-                             (2, "Stage II — after phone calls")]:
-            n_el = int(recruit_eligible(recruit_base, stage=stage).sum())
-            den = n_el + n_ref
-            stages.append({
-                "stage": label,
-                "eligible sign-ups": n_el,
-                "refusals": n_ref,
-                "base (denominator)": den,
-                "recruitment rate": f"{round(100 * n_el / den)}%" if den else "0%",
-            })
-        for col, row in zip(st.columns(2), stages):
-            col.metric(row["stage"], row["recruitment rate"],
-                       help=f"{row['eligible sign-ups']} / {row['base (denominator)']}")
-        st.dataframe(pd.DataFrame(stages), width="stretch", hide_index=True)
+        # ONE base. It used to be reported as two stages, the second differing
+        # only by the call outcomes; those are now ordinary screen-out reasons
+        # alongside the recruitment determinants, so there is a single number and
+        # the base already accounts for them.
+        n_signed = int(signed.sum())
+        n_el = int(recruit_eligible(recruit_base, stage=2).sum())
+        den = n_el + n_ref
+        k = st.columns(3)
+        k[0].metric("Recruitment rate", f"{round(100 * n_el / den)}%" if den else "0%",
+                    help=f"{n_el} eligible sign-ups / {den} base")
+        k[1].metric("Eligible sign-ups", f"{n_el}",
+                    help=f"of {n_signed} who signed up; the rest were screened out")
+        k[2].metric("Base (denominator)", f"{den}",
+                    help=f"{n_el} eligible sign-ups + {n_ref} refusals")
+        st.dataframe(pd.DataFrame([{
+            "signed up": n_signed,
+            "screened out": n_signed - n_el,
+            "eligible sign-ups": n_el,
+            "refusals": n_ref,
+            "base (denominator)": den,
+            "recruitment rate": f"{round(100 * n_el / den)}%" if den else "0%",
+        }]), width="stretch", hide_index=True)
 
         # Take the determinant names from recruit_exclusions itself, not from
         # ELIG_FLAG_LABELS: the phone-based ones ("no phone number", "no number is
@@ -103,8 +110,9 @@ def render_indicators(summary, route_col):
             f"signed_up  = {status_col} is \"Eligible - signed up\"",
             f"refusal    = {status_col} is \"Eligible - refused\"",
             "",
-            "eligible_signups(Stage I)  = signed_up AND no determinant fired",
-            f"eligible_signups(Stage II) = Stage I AND current_callcode NOT IN ({_s2})",
+            "eligible_signups = signed_up",
+            "                   AND no recruitment determinant fired",
+            f"                   AND current_callcode NOT IN ({_s2})",
             "",
             "recruitment rate = eligible_signups / (eligible_signups + refusals)",
             "",
@@ -112,23 +120,25 @@ def render_indicators(summary, route_col):
             "               (any ONE of them screens the respondent out; they overlap,",
             "                and a blank flag is NOT read as a 0)",
             "",
-            "NB refusals stay in the denominator at both stages, so the two rates",
-            "   differ only through the numerator.",
+            "NB the call outcomes screen someone out exactly as a determinant does,",
+            "   so they make the base SMALLER. Refusals stay in the denominator.",
         )
 
         # Why people fall out of the base, one row per determinant. Counted over
         # the sign-ups only: refusals and missing are never screened (see above).
         ex2 = recruit_exclusions(recruit_base, stage=2)[signed]
+        _call_labels = set(CALL_OUTCOME_EXCLUSIONS.values())
         brk = pd.DataFrame({
             "excluded for": list(ex2.columns),
-            "applies from": ["Stage I"] * (len(ex2.columns) - 1) + ["Stage II"],
+            "kind": ["call outcome" if c in _call_labels else "recruitment determinant"
+                     for c in ex2.columns],
             "sign-ups excluded": [int(ex2[c].sum()) for c in ex2.columns],
-        })
+        }).sort_values(["kind", "sign-ups excluded"], ascending=[True, False])
         st.markdown("**Who is screened out of the base**")
         st.dataframe(brk, width="stretch", hide_index=True)
         st.caption(
             f"Counted over the {int(signed.sum())} sign-ups; reasons **overlap**, so they "
-            f"do not add up to the difference between the two bases. Outside every base: "
+            f"do not add up to the {int(signed.sum()) - n_el} screened out. Outside the base: "
             f"**{n_miss} missing** sign-up status. Blank flags are **not** read as 0 — a "
             "respondent with no value recorded stays eligible."
         )

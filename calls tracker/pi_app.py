@@ -35,9 +35,9 @@ except Exception as e:
 
 left, right = st.columns([4, 1])
 left.markdown(
-    "**📊 Indicators** — recruitment rate at both eligibility stages, and attrition "
-    "on both definitions, over the whole sample. Day-to-day case management lives in "
-    "the separate **Call-Tracking Monitor** dashboard."
+    "**📊 Indicators** — the recruitment rate and attrition on both definitions, over "
+    "the whole sample. Day-to-day case management lives in the separate "
+    "**Call-Tracking Monitor** dashboard."
 )
 if right.button("🔄 Refresh now"):
     st.cache_data.clear()

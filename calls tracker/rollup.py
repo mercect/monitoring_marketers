@@ -162,9 +162,11 @@ def _to_dt(series):
 # Eligibility determinants now arrive as INDEPENDENT variables on the sample
 # tab, one per reason, so they are counted separately as well as OR-ed together.
 # Two stages, same formula, different exclusion sets:
-#   Stage I  (after data entry)  - recruitment-time determinants only.
-#   Stage II (after phone calls) - Stage I PLUS the call outcomes that show the
-#                                  person was never reachable / not the right one.
+#   stage=1 - recruitment-time determinants only. This is the pool that CAN be
+#             called, so it must never key off a call outcome.
+#   stage=2 - stage 1 PLUS the call outcomes that show the person was never
+#             reachable / not the right one. This is the reported base: those
+#             respondents are screened out, so it is the smaller of the two.
 # =============================================================================
 
 # label shown in the breakdown -> the sample-tab column(s) that can carry it, in
@@ -202,8 +204,20 @@ HIDE_FROM_DASHBOARD = (
 def hide_columns(df):
     """Drop HIDE_FROM_DASHBOARD from a frame about to be published on screen."""
     return df.drop(columns=[c for c in HIDE_FROM_DASHBOARD if c in df.columns])
-# Stage-II only: closed by the calls as never-reachable / not the right person.
-STAGE2_CALLCODES = {"0_WN", "0_IN", "0_NA", "0_OF"}
+# Call outcomes that close a pid as never-reachable / not the right person.
+# ITEMISED, not lumped: each is its own screen-out reason in the breakdown, so a
+# PI can see how many were lost to a wrong number as against a phone that was
+# simply never answered. They used to share a single row called "not reachable /
+# wrong person (calls)", which hid that split.
+CALL_OUTCOME_EXCLUSIONS = {
+    "0_WN": "wrong number (0_WN)",
+    "0_IN": "incorrect respondent (0_IN)",
+    "0_NA": "no answer (0_NA)",
+    "0_OF": "phone off (0_OF)",
+}
+# The same codes as a bare set. Kept under the old name because it is imported by
+# indicators.py and reads well in the formula box.
+STAGE2_CALLCODES = set(CALL_OUTCOME_EXCLUSIONS)
 
 # phone_sample_status (2026-08 sheet), punctuation-stripped -> sign-up class.
 # 'Not eligible' folds the eligibility screen INTO the status, which rec_signup
@@ -310,8 +324,12 @@ def recruit_exclusions(df: pd.DataFrame, stage: int = 1) -> pd.DataFrame:
             if col:
                 x[label] = _truthy(_s(df, col))
     if stage >= 2:
+        # One column per call outcome rather than one lumped column, so the
+        # breakdown names the actual reason. Each still screens the respondent
+        # out, so the base shrinks exactly as before - only the reporting splits.
         cc = _s(df, "current_callcode").astype(str).str.strip().str.upper()
-        x["not reachable / wrong person (calls)"] = cc.isin(STAGE2_CALLCODES)
+        for code, label in CALL_OUTCOME_EXCLUSIONS.items():
+            x[label] = cc == code
     return x.fillna(False).astype(bool)
 
 
@@ -957,10 +975,15 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
     out["ineligible_type2"] = out["_elig2"].where(_seen, no_phone.astype(int))
     out = out.drop(columns=["_elig1", "_elig2"])
 
-    # eligible_to_call = the pool that CAN be called = Stage-I recruitment
-    # eligibility: signed up, has a number of their own, and cleared every
-    # ineligibility determinant on the sheet. (Excludes refusals and missing.) Stage II is NOT used here: it keys off call outcomes, so it would
-    # remove pids the callers still have to work.
+    # eligible_to_call = the pool that CAN be called: signed up, has a number of
+    # their own, and cleared every ineligibility determinant on the sheet.
+    # (Excludes refusals and missing.)
+    #
+    # stage=1 ON PURPOSE, and it must stay that way. stage=2 additionally screens
+    # out the call outcomes (0_WN / 0_IN / 0_NA / 0_OF), which is right for the PI
+    # dashboard's reported base but wrong here: this column drives the field
+    # team's "To be assigned" queue, so keying it off a call outcome would remove
+    # pids the callers still have to work.
     if _first_col(out, SIGNUP_STATUS_COLS):
         out["eligible_to_call"] = recruit_eligible(out, stage=1).astype(int)
     else:
