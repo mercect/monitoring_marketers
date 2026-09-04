@@ -357,8 +357,16 @@ def render_attrition(summary, subs, route_col):
     FORMULA = r"**Attrition rate = attrited / total eligible base**\*"
     # No separate "attrition rate" row: the `attrited` row's % cell IS that rate,
     # against the same denominator, so a rate row only restated it.
+
+
     BASE_ROW = "total eligible base"
     OTHER_ROW = "↳ other 0_ closure"
+    # `completed` counts every interview that produced data. It splits into the
+    # ones that ran to the end and the ones that stopped part-way — an interview
+    # held at Section S is data in hand, not a loss, so it belongs on this side
+    # of the table rather than under `attrited`.
+    FULL_ROW = "↳ full survey"
+    INCOMPLETE_ROW = "↳ incomplete"
 
     # The three buckets are the point of this table, so each gets its own colour:
     # green = finished, red = lost, amber = still open. Both background AND text
@@ -367,7 +375,7 @@ def render_attrition(summary, subs, route_col):
     # bury the parent they add up to.
     BUCKET_CSS = {
         "completed": "background-color: #E6F4EA; color: #14682C; font-weight: 700;",
-        "incomplete": "background-color: #E8F0FE; color: #174EA6; font-weight: 700;",
+        INCOMPLETE_ROW: "background-color: #E8F0FE; color: #174EA6; font-weight: 700;",
         "attrited": "background-color: #FCE8E6; color: #B3261E; font-weight: 700;",
         "in progress": "background-color: #FEF3E0; color: #8A5300; font-weight: 700;",
     }
@@ -398,9 +406,10 @@ def render_attrition(summary, subs, route_col):
         switched-off closure is attrition there; Stage II v2 removes them, so it
         cannot be.
 
-        completed / incomplete / attrited / in progress are a partition, not four
-        overlapping filters — `in progress` is the remainder, so they always sum
-        to the base.
+        completed / attrited / in progress are a partition, not three overlapping
+        filters — `in progress` is the remainder, so they always sum to the base.
+        `completed` then splits into full surveys and incomplete ones, which sum
+        back to it, and the section rows sum to `incomplete`.
         The attrited children are mutually exclusive (one callcode per pid), so
         they sum to the attrited parent exactly.
 
@@ -425,11 +434,14 @@ def render_attrition(summary, subs, route_col):
             done, part, lost = done & inside, part & inside, lost & inside
         counted = [c for c in CLOSING_CALLCODE_LABELS
                    if c not in screened_out_codes]
-        out = {"completed": int(done.sum()), "incomplete": int(part.sum())}
-        # where each incomplete interview was left off, deepest section first
-        secs = sorted({resumed[p] for p in base.loc[part, "pid"]})
-        for sname in secs:
-            out[f"↳ {sname}"] = int(
+        # `completed` is the PARENT: every interview that produced data, whether
+        # it ran to the end or stopped part-way. The two children split it.
+        out = {"completed": int((done | part).sum()),
+               FULL_ROW: int(done.sum()),
+               INCOMPLETE_ROW: int(part.sum())}
+        # ...and where each incomplete one was left off.
+        for sname in sorted({resumed[p] for p in base.loc[part, "pid"]}):
+            out[f"↳ ↳ {sname}"] = int(
                 (part & base["pid"].map(lambda x: resumed.get(x) == sname)).sum())
         out["attrited"] = int(lost.sum())
         for c in counted:
