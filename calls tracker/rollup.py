@@ -371,7 +371,7 @@ def rollup(submissions: pd.DataFrame, now=None) -> pd.DataFrame:
     df["_end"] = _to_dt(_s(df, "endtime"))
     df["_start"] = _to_dt(_s(df, "starttime"))
     df["_order"] = df["_end"].fillna(df["_start"])
-    df["_is_answered"] = _truthy(_s(df, "is_answered")) | _truthy(_s(df, "pickup"))
+    df["_is_answered"] = is_contact_row(df)
     df["_is_resumed"] = _truthy(_s(df, "is_resumed")) | _truthy(_s(df, "rawfollow"))
     df["_survey_id"] = pd.to_numeric(_s(df, "survey_id"), errors="coerce")
 
@@ -408,7 +408,9 @@ def rollup(submissions: pd.DataFrame, now=None) -> pd.DataFrame:
         ever_picked = bool(g["_is_answered"].any())
         resume_rounds = int(g["_is_resumed"].sum())
 
-        answered_dates = g.loc[g["_is_answered"], "_end"].dropna()
+        # dated off _order (endtime, falling back to starttime) so a round that
+        # reached the respondent still dates when endtime is missing.
+        answered_dates = g.loc[g["_is_answered"], "_order"].dropna()
         last_contact = answered_dates.max() if len(answered_dates) else pd.NaT
         first_seen = g["_order"].min()
         days_open = ""
@@ -538,6 +540,30 @@ def is_attempt_row(df: pd.DataFrame) -> pd.Series:
     correction = _truthy(_s(df, "is_supervisor_closure"))
     held_non4 = _truthy(_s(df, "held_partial")) & ~cc.str.startswith("4_")
     return ~(correction | held_non4)
+
+
+def is_contact_row(df: pd.DataFrame) -> pd.Series:
+    """Which submissions mean the RESPONDENT WAS ACTUALLY ON THE LINE. ONE
+    definition, used by rollup() and summarize() so last_contact_date,
+    ever_picked_up and times_pickedup all agree.
+
+    `is_answered` / `pickup` is the survey's own flag and stays authoritative
+    wherever it is asked — but the notification path that emits the 4_* codes
+    never asks it (every such row comes through blank), because by then the
+    interview is already under way. So contact on a resume round has to be read
+    off the callcode instead: a drop (4_D) or a reschedule (4_SC) can only come
+    out of a live conversation, while 4_NA / 4_OF are a re-dial nobody picked
+    up. Without this, a pid whose only conversations happened on resume rounds
+    reported ever_picked_up = 0 and a BLANK last_contact_date — the Resume queue
+    showed cases that had demonstrably been spoken to as never contacted.
+
+    DROP_CODES / RESCHEDULE_CODES are the same vocabulary that drives
+    times_dropped / times_rescheduled, and their non-4_* members already carry
+    pickup = 1, so consulting them only ever ADDS the rounds the survey left
+    blank. Completion (callcode 1) is contact by definition."""
+    cc = _s(df, "callcode").astype(str).str.strip().str.upper()
+    return (_truthy(_s(df, "is_answered")) | _truthy(_s(df, "pickup"))
+            | cc.isin(DROP_CODES | RESCHEDULE_CODES) | cc.eq("1"))
 
 
 def drop_after_complete(df: pd.DataFrame, order_cols, complete_mask=None):
@@ -723,7 +749,7 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
         # survey (incl. completions), so it would drop real attempts.
         df["_correction"] = _truthy(_s(df, "is_supervisor_closure"))
         df["_is_attempt"] = is_attempt_row(df)
-        df["_answered"] = _truthy(_s(df, "is_answered")) | _truthy(_s(df, "pickup"))
+        df["_answered"] = is_contact_row(df)
         df["_incorrect"] = _truthy(_s(df, "is_incorrect"))
         df["_correct"] = _truthy(_s(df, "is_correct"))
         df["_dk"] = _truthy(_s(df, "is_dk_contact"))
