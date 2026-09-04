@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from rollup import (recruit_eligible, screen_out_masks, screen_out_sources,
+                    PARTIALSAVE_SECTIONS,
                     _signup_class, _first_col, _s, ELIG_FLAG_LABELS,
                     SIGNUP_STATUS_COLS, NO_PHONE, NO_PHONE_SUBCATS,
                     STAGE_CALLS, STAGE_CALLS_V2, STAGE2_CALLCODES,
@@ -38,6 +39,26 @@ def _rate_style(tbl, rate_row):
     """The rate row bold and colour-banded; every other row plain."""
     return tbl.style.apply(
         lambda r: [RATE_CSS if r.iloc[0] == rate_row else ""] * len(r), axis=1)
+
+
+def resume_sections(subs):
+    """pid -> the DEEPEST section a held partial ever reached, as a label.
+
+    `rs_section` is written on the drop / reschedule notification that holds a
+    partial, and it is the only place the depth survives: the Long Survey
+    submission carrying those answers is not always in the export (EV87199A2
+    reached Section P with no answer column filled in). So the notification is
+    the evidence, and the max across a pid's submissions is how far they got —
+    `last_section` is only the MOST RECENT call, which is usually shallower."""
+    if "rs_section" not in subs.columns:
+        return {}
+    deepest = {}
+    for pid, v in zip(subs["pid"], subs["rs_section"]):
+        v = str(v).strip()
+        if v.isdigit() and int(v) > deepest.get(pid, -1):
+            deepest[pid] = int(v)
+    return {pid: PARTIALSAVE_SECTIONS.get(str(n), f"section {n}")
+            for pid, n in deepest.items()}
 
 
 def _route_filter(summary, route_col, label, key):
@@ -325,6 +346,10 @@ def render_attrition(summary, subs, route_col):
     # A set of pids resolved inside the chosen days, or None for "all days".
     # It never touches base_df — see _day_picker on why the base must not move.
     window = _day_picker(subs, "att_day")
+    # pid -> deepest section a held partial reached. Presence of a section is
+    # what separates `incomplete` from `attrited`: a partial was saved at a named
+    # point in the instrument, so there is an interview to resume.
+    resumed = resume_sections(subs)
 
     # The asterisk ties the formula to the footnote each subsection prints under
     # it — what "eligible base" actually excludes differs between A and B, and
@@ -342,6 +367,7 @@ def render_attrition(summary, subs, route_col):
     # bury the parent they add up to.
     BUCKET_CSS = {
         "completed": "background-color: #E6F4EA; color: #14682C; font-weight: 700;",
+        "incomplete": "background-color: #E8F0FE; color: #174EA6; font-weight: 700;",
         "attrited": "background-color: #FCE8E6; color: #B3261E; font-weight: 700;",
         "in progress": "background-color: #FEF3E0; color: #8A5300; font-weight: 700;",
     }
@@ -372,8 +398,9 @@ def render_attrition(summary, subs, route_col):
         switched-off closure is attrition there; Stage II v2 removes them, so it
         cannot be.
 
-        completed / attrited / in progress are a partition, not three overlapping
-        filters — `in progress` is the remainder, so they always sum to the base.
+        completed / incomplete / attrited / in progress are a partition, not four
+        overlapping filters — `in progress` is the remainder, so they always sum
+        to the base.
         The attrited children are mutually exclusive (one callcode per pid), so
         they sum to the attrited parent exactly.
 
@@ -385,20 +412,33 @@ def render_attrition(summary, subs, route_col):
         base = df[recruit_eligible(df, stage=stage)]
         cc = base["current_callcode"].astype(str).str.strip().str.upper()
         done = base["is_complete"] == 1
-        lost = cc.str.startswith("0_") & ~cc.isin(screened_out_codes) & ~done
+        closed = cc.str.startswith("0_") & ~cc.isin(screened_out_codes) & ~done
+        # An interview that got somewhere and was saved is INCOMPLETE, not lost:
+        # a resume section means there is a real partial to go back to. Note the
+        # wrong-respondent codes never reach here — they are screened out of the
+        # base upstream — so a partial belonging to the wrong person cannot land
+        # in this row.
+        part = closed & base["pid"].isin(resumed)
+        lost = closed & ~part
         if window is not None:
             inside = base["pid"].isin(window)
-            done, lost = done & inside, lost & inside
+            done, part, lost = done & inside, part & inside, lost & inside
         counted = [c for c in CLOSING_CALLCODE_LABELS
                    if c not in screened_out_codes]
-        out = {"completed": int(done.sum()), "attrited": int(lost.sum())}
+        out = {"completed": int(done.sum()), "incomplete": int(part.sum())}
+        # where each incomplete interview was left off, deepest section first
+        secs = sorted({resumed[p] for p in base.loc[part, "pid"]})
+        for sname in secs:
+            out[f"↳ {sname}"] = int(
+                (part & base["pid"].map(lambda x: resumed.get(x) == sname)).sum())
+        out["attrited"] = int(lost.sum())
         for c in counted:
             out[f"↳ {c} ({CLOSING_CALLCODE_LABELS[c]})"] = int(
                 (lost & (cc == c)).sum())
         # A 0_ code the form does not define — a supervisor can type one in.
         # Kept so the children can never fail to add up to the parent.
         out[OTHER_ROW] = int((lost & ~cc.isin(counted)).sum())
-        out["in progress"] = int((~done & ~lost).sum())
+        out["in progress"] = int((~done & ~part & ~lost).sum())
         out[BASE_ROW] = len(base)
         return out
 
@@ -418,11 +458,18 @@ def render_attrition(summary, subs, route_col):
         st.markdown(
             "**Counted as attrition:** "
             + ", ".join(f"{CLOSING_CALLCODE_LABELS[c]} (`{c}`)" for c in counted)
-            + " — a case closed with any of these, without a completed interview.")
+            + " — a case closed with any of these, without a completed interview "
+            + "**and with no partial saved**. One that did save a partial is "
+            + "`incomplete` above, not a loss.")
         st.caption(definition)      # the footnote the asterisk points at
 
         cols = [(name, _counts(df, stage, codes, window)) for name, df in _slices()]
-        allc = cols[0][1]
+        allc = dict(cols[0][1])
+        # union across slices: an arm can hold a section the aggregate ordering
+        # has not seen yet, and dropping it would break the children-sum check.
+        for _, c in cols[1:]:
+            for k in c:
+                allc.setdefault(k, 0)
         rows = [r for r in allc if r != BASE_ROW]
         if not allc[OTHER_ROW]:
             rows.remove(OTHER_ROW)          # only shown when it actually happens
@@ -431,12 +478,13 @@ def render_attrition(summary, subs, route_col):
         data = {"": rows}
         for name, c in cols:
             base = c[BASE_ROW]
-            data[name] = [str(c[r]) for r in rows]
+            data[name] = [str(c.get(r, 0)) for r in rows]
             # "% of THIS column's eligible base" — so the arms stay comparable
             # when they differ in size. The `attrited` cell here is the attrition
             # rate for that column; the base row is 100% by construction.
             data[f"{name} %"] = [
-                (f"{round(100 * c[r] / base)}%" if base else "0%") for r in rows]
+                (f"{round(100 * c.get(r, 0) / base)}%" if base else "0%")
+                for r in rows]
 
         tbl = pd.DataFrame(data)
         st.dataframe(_bucket_style(tbl),
