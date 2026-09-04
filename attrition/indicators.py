@@ -41,6 +41,13 @@ def _rate_style(tbl, rate_row):
         lambda r: [RATE_CSS if r.iloc[0] == rate_row else ""] * len(r), axis=1)
 
 
+# Section label -> its position in the instrument, straight from the codebook
+# map. Sorting the incomplete rows alphabetically put Travel (8) above Symptoms
+# (7) purely because "E" precedes "S"; this orders them the way a respondent
+# actually moves through the questionnaire, so the rows read as depth reached.
+SECTION_ORDER = {label: int(n) for n, label in PARTIALSAVE_SECTIONS.items()}
+
+
 def resume_sections(subs):
     """pid -> the DEEPEST section a held partial ever reached, as a label.
 
@@ -371,11 +378,11 @@ def render_attrition(summary, subs, route_col):
     # The three buckets are the point of this table, so each gets its own colour:
     # green = finished, red = lost, amber = still open. Both background AND text
     # colour are set, so the rows stay legible whichever theme the viewer uses.
-    # The `↳` children of `attrited` stay plain — colouring them too would
-    # bury the parent they add up to.
+    # Every `↳` child stays plain, `incomplete` included — it is part of
+    # `completed`, and giving it a colour of its own made it read as a fourth
+    # bucket competing with the parent it belongs to.
     BUCKET_CSS = {
         "completed": "background-color: #E6F4EA; color: #14682C; font-weight: 700;",
-        INCOMPLETE_ROW: "background-color: #E8F0FE; color: #174EA6; font-weight: 700;",
         "attrited": "background-color: #FCE8E6; color: #B3261E; font-weight: 700;",
         "in progress": "background-color: #FEF3E0; color: #8A5300; font-weight: 700;",
     }
@@ -440,7 +447,8 @@ def render_attrition(summary, subs, route_col):
                FULL_ROW: int(done.sum()),
                INCOMPLETE_ROW: int(part.sum())}
         # ...and where each incomplete one was left off.
-        for sname in sorted({resumed[p] for p in base.loc[part, "pid"]}):
+        for sname in sorted({resumed[p] for p in base.loc[part, "pid"]},
+                            key=lambda s: (SECTION_ORDER.get(s, 999), s)):
             out[f"↳ ↳ {sname}"] = int(
                 (part & base["pid"].map(lambda x: resumed.get(x) == sname)).sum())
         out["attrited"] = int(lost.sum())
