@@ -59,6 +59,31 @@ def yesno(df):
     return out
 
 
+# Overdue callbacks are RED rather than filtered out. They stay in "To be
+# followed up" with everything else (see callback_queue in open_with_buckets) —
+# an overdue promise is the most owed call on the list, not one to hide — so the
+# only thing left to do is make it impossible to miss while scanning.
+OVERDUE_CSS = "color: #e03131; font-weight: 600"
+
+
+def style_overdue(df, when_col="callback_when"):
+    """Red, bold text on every row whose callback is overdue.
+
+    Returns a Styler (st.dataframe renders one directly), or the frame untouched
+    when there is nothing to mark — a queue that carries no callback timing, or
+    an empty one. Written with axis=None so the mask is applied by LABEL: the
+    callback queue is sorted before it gets here, so a positional lookup would
+    colour the wrong rows."""
+    if when_col not in df.columns or df.empty:
+        return df
+    overdue = df[when_col].astype(str).str.strip().str.lower().eq("overdue")
+    if not overdue.any():
+        return df
+    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+    styles.loc[overdue, :] = OVERDUE_CSS
+    return df.style.apply(lambda _: styles, axis=None)
+
+
 def count_pct(series, label):
     """Value counts as a small table with a % column and a Total row."""
     vc = series[series.astype(str).str.strip() != ""].value_counts()
@@ -122,6 +147,17 @@ def open_with_buckets(cases, summary):
     # column raises. Zero open cases is normal (every queue filtered out, or a
     # roster with nothing open), so this path has to survive it.
     oc["review_reason"] = [" + ".join(_why.columns[row]) for row in _why.values]
+    # non-exclusive overlay: the Callback queue, captured BEFORE the escalation
+    # rewrite below. A scheduled callback is a PROMISE to the respondent — it has
+    # to keep showing under "To be followed up" no matter how worked the pid is.
+    # Escalation used to move it to Review outright, so the callbacks that had
+    # been chased hardest (and every OVERDUE one, since esc_overdue fires on
+    # exactly those) dropped out of the follow-up list altogether - the opposite
+    # of the intent. Now they appear in BOTH: still due to be rung, and flagged
+    # for a supervisor. Same pattern as resume_queue below; `action_bucket` stays
+    # the exclusive partition the monitoring summary totals on, so the
+    # "actionable" figure does not double-count.
+    oc["callback_queue"] = (oc["action_bucket"] == "Callback").astype(int)
     oc.loc[esc_overdue | esc_worked, "action_bucket"] = "Review"
     # non-exclusive overlay: the Resume queue is every pid STILL holding a partial
     # save (last submission a 4_* - see rollup.is_active_partialsave) plus the
@@ -351,6 +387,11 @@ with tab_summary:
     ocb = open_with_buckets(cases, summary)
     cnt = ocb["action_bucket"].value_counts() if len(ocb) else pd.Series(dtype=int)
     n_followup, n_resume = int(cnt.get("Callback", 0)), int(cnt.get("Resume", 0))
+    # What the follow-up queue actually LISTS: every scheduled callback, including
+    # the ones escalated to Review, which overlap the "To be reviewed" row below.
+    # `n_followup` (the exclusive bucket) is what `actionable` totals on, so
+    # nothing double-counts - same split as n_resume / n_resume_shown.
+    n_followup_shown = int(ocb["callback_queue"].sum()) if len(ocb) else 0
     # What the Resume queue actually LISTS: held partials + 3_D, overlapping the
     # other rows. Shown in the table so the count matches the tab; `n_resume` (the
     # exclusive bucket) is what `actionable` totals on, so nothing double-counts.
@@ -364,8 +405,10 @@ with tab_summary:
     pct = round(100 * actionable / total) if total else 0
     st.markdown(f"### Active pids: {pct}%  ({actionable} of {total})")
     _mon_rows = [
-        ("To be followed up", n_followup,
-         "reschedules or drops — a callback time was set or the call dropped"),
+        ("To be followed up", n_followup_shown,
+         "reschedules or drops — a callback time was set or the call dropped "
+         "(overlaps *To be reviewed*: a callback that is overdue or heavily "
+         "worked is flagged there and still listed here)"),
         ("To be resumed (partial saved)", n_resume_shown,
          "a half-finished interview is still sitting on a tablet — the last submission "
          "is a 4_ (overlaps the rows above: a 4_SC also has a callback time)"),
@@ -373,7 +416,8 @@ with tab_summary:
         ("To keep calling", n_keep,
          "no answer / phone off, or wrong number / incorrect respondent with other numbers to try"),
         ("To be reviewed", n_review,
-         "overdue callback, or ≥4/5 shifts tried OR >8 attempts and still no completion"),
+         f"overdue callback, or ≥{SHIFTS_MOST}/5 shifts tried OR >{ATTEMPTS_MAX} "
+         "attempts and still no completion"),
     ]
     if SHOW_WHATSAPP:
         _mon_rows.append(("To be reached out on WhatsApp", n_whatsapp,
@@ -471,7 +515,13 @@ with tab_action:
                         "or *All tried* / *None tried*.")
 
         GUIDANCE = {
-            "Callback": "Prioritise the **most imminent** callbacks first.",
+            "Callback": "Prioritise the **most imminent** callbacks first — "
+                        ":red[**overdue ones are red**] and sit at "
+                        "the top. A callback stays in this list however many shifts "
+                        "or attempts it has already taken: a time was promised to the "
+                        "respondent, so it keeps being owed. **Overlaps 🔎 To be "
+                        "reviewed** — an overdue or heavily-worked callback is flagged "
+                        "there for a supervisor *and* still listed here to be rung.",
             "Keep calling": "Keep dialing (no-answer / phone-off), or try the other numbers "
                             "on file (wrong number / incorrect respondent). Watch shifts "
                             "tried and total attempts.",
@@ -480,8 +530,10 @@ with tab_action:
                       "to another enumerator. **Overlaps the other queues** — a `4_SC` held "
                       "partial also has a callback time, so it is listed here *and* under "
                       "⏰ To be followed up.",
-            "Review": "Escalations only — overdue callbacks, or pids tried across ≥4 shifts "
-                      "OR >8 attempts and still no completion.",
+            "Review": f"Escalations only — overdue callbacks, or pids tried across "
+                      f"≥{SHIFTS_MOST} shifts OR >{ATTEMPTS_MAX} attempts and still no "
+                      "completion. A pid with a callback time also stays in ⏰ To be "
+                      "followed up; flagging it here does not take it off the call list.",
         }
 
         # What puts a pid in each queue, printed under its subtitle. Built FROM the
@@ -491,7 +543,8 @@ with tab_action:
 
         DEFN = {
             "Callback": f"**Codes:** {_codes(CC_CALLBACK)} — a callback time was "
-                        "agreed, or the call dropped and needs chasing.",
+                        "agreed, or the call dropped and needs chasing. Every open pid "
+                        "on these codes is listed, escalated or not.",
             "Keep calling": f"**Codes:** {_codes(CC_KEEP_CALLING)} — no answer / phone "
                             "off, or a wrong number / incorrect respondent with other "
                             "numbers still to try.",
@@ -521,6 +574,7 @@ with tab_action:
             "Callback":     ["pid", "enumerator", "status", "callcode",
                              "total_attempts", "days_open", "last_contact_date",
                              "callback_when", "callback_due", "callback_by",
+                             "review_reason",
                              "times_rescheduled", "times_dropped", "times_noanswer",
                              "times_off", "active_partialsave", "shifts_to_try",
                              "rsd_reason", "last_comment"],
@@ -544,13 +598,21 @@ with tab_action:
 
         # Open cases laid out down the page, one section per queue.
         for key, label in BUCKETS:
-            # Resume reads its non-exclusive overlay (held partials + 3_D), every
-            # other queue reads the exclusive bucket. See open_with_buckets.
-            rows = (open_cases[open_cases["resume_queue"] == 1].copy() if key == "Resume"
+            # Resume and Callback read their non-exclusive overlays (held partials
+            # + 3_D; every scheduled callback incl. escalated ones), every other
+            # queue reads the exclusive bucket. See open_with_buckets.
+            _overlay = {"Resume": "resume_queue", "Callback": "callback_queue"}.get(key)
+            rows = (open_cases[open_cases[_overlay] == 1].copy() if _overlay
                     else open_cases[open_cases["action_bucket"] == key].copy())
             if key == "Callback":
-                rows = rows.sort_values(["callback_overdue", "callback_due"],
-                                        ascending=[False, True])
+                # Overdue first, then soonest due. Sorted on the PARSED time, not
+                # the raw string: callback_due is free text like "2026-09-02 8:00",
+                # so a lexical sort put 8:00 after 16:00 and floated the untimed
+                # ones (a 2_D drop has no scheduled time) above real appointments.
+                rows["_cb_dt"] = pd.to_datetime(rows["callback_due"], errors="coerce")
+                rows = rows.sort_values(["callback_overdue", "_cb_dt"],
+                                        ascending=[False, True],
+                                        na_position="last").drop(columns="_cb_dt")
             elif key == "Keep calling":
                 # least-worked first: fewest shift windows tried, then fewest attempts
                 rows = rows.sort_values(["shifts_covered_n", "total_attempts"],
@@ -566,7 +628,10 @@ with tab_action:
             if rows.empty:
                 st.caption("Nothing in this queue right now.")
             else:
-                st.dataframe(yesno(rows), width="stretch", hide_index=True)
+                # style_overdue no-ops on a queue with no callback_when column,
+                # so this is safe for all four and marks it wherever it is shown.
+                st.dataframe(style_overdue(yesno(rows)), width="stretch",
+                             hide_index=True)
                 st.caption(SHIFT_LEGEND)
 
         # non-exclusive overlay: WhatsApp outreach (these pids also appear above)
