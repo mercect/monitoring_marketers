@@ -158,3 +158,28 @@ def route_column(summary):
     attempts. Returns the column name, or None when the sheet has no route."""
     return next((c for c in summary.columns
                  if c == "route_recruited" or "route" in c.lower()), None)
+
+
+# The route(s) both dashboards OPEN ON. Every route filter is a multiselect the
+# user can widen back to everything, so this is a starting view and not a
+# restriction - nothing is hidden, it just is not selected on first load.
+# To change which route the team lands on, edit this tuple and nothing else.
+DEFAULT_ROUTES = ("Lumley - Jui",)
+
+
+def default_routes(options):
+    """Which routes a route filter should start with, given what the sheet has.
+
+    Compared on letters and digits ONLY - case, spaces, dashes and punctuation are
+    stripped out first - so a cosmetic re-spelling on the sheet ("Lumley- Jui",
+    "lumley  jui") still matches instead of silently emptying the filter. Same
+    normalisation rollup.eligible_roster uses on phone_sample_status.
+
+    Falls back to EVERY route when none of the preferred names is present: a
+    filter defaulting to nothing renders a blank dashboard, which reads as a data
+    failure rather than as a filter, and that is the worse way to be wrong."""
+    def _norm(x):
+        return re.sub(r"[^a-z0-9]", "", str(x).lower())
+    wanted = {_norm(r) for r in DEFAULT_ROUTES}
+    hit = [o for o in options if _norm(o) in wanted]
+    return hit or list(options)

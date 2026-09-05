@@ -23,8 +23,8 @@ import pandas as pd
 import streamlit as st
 
 from auth import require_password
-from data_io import (load_all, route_column, REFRESH_SECONDS, code_stamp,
-                     EXPECTED_SAMPLE_TAB)
+from data_io import (load_all, route_column, default_routes, REFRESH_SECONDS,
+                     code_stamp, EXPECTED_SAMPLE_TAB)
 from rollup import (OPEN_STATUSES, _to_dt, effort_by_enumerator, summary_kpis,
                     eligible_roster, recruit_exclusions,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME)
@@ -302,7 +302,10 @@ def date_range_filter(label, dates, pids, help=None):
 route_col = route_column(summary)
 route_options = (sorted(x for x in summary[route_col].dropna().unique() if str(x).strip())
                  if route_col else [])
-picked_route = (st.sidebar.multiselect("Route", route_options, default=route_options)
+# Opens on DEFAULT_ROUTES (see data_io), not on every route. Widen it here to
+# see the rest — nothing is hidden, it just is not selected on first load.
+picked_route = (st.sidebar.multiselect("Route", route_options,
+                                       default=default_routes(route_options))
                 if route_options else [])
 
 # when the respondent was recruited (roster date)
