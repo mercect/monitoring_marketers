@@ -103,6 +103,30 @@ def render_indicators(summary, route_col):
             "recruitment rate": f"{round(100 * n_el / den)}%" if den else "0%",
         }]), width="stretch", hide_index=True)
 
+        # ---- the same base, split by route ----------------------------------
+        # The routes are separate recruitment batches run on different days, so a
+        # combined rate averages populations that have nothing to do with each
+        # other. Only routes CURRENTLY SELECTED above appear, so this table always
+        # reconciles with the single-row summary rather than quietly reporting a
+        # wider population than the rest of the page.
+        _el_mask = recruit_eligible(recruit_base, stage=2)
+        if route_col and recruit_base[route_col].nunique() > 1:
+            _per = []
+            for _r in sorted(x for x in recruit_base[route_col].dropna().unique()
+                             if str(x).strip()):
+                _in = recruit_base[route_col] == _r
+                _rs, _re_, _rr = (int((signed & _in).sum()), int((_el_mask & _in).sum()),
+                                  int((refusal & _in).sum()))
+                _rd = _re_ + _rr
+                _per.append({
+                    "route": _r, "signed up": _rs, "screened out": _rs - _re_,
+                    "eligible sign-ups": _re_, "refusals": _rr,
+                    "base (denominator)": _rd,
+                    "recruitment rate": f"{round(100 * _re_ / _rd)}%" if _rd else "0%",
+                })
+            st.markdown("**The base, by route**")
+            st.dataframe(pd.DataFrame(_per), width="stretch", hide_index=True)
+
         # Take the determinant names from recruit_exclusions itself, not from
         # ELIG_FLAG_LABELS: the phone-based ones ("no phone number", "no number is
         # their own") are derived from the phone-count columns and are not in that
@@ -136,10 +160,24 @@ def render_indicators(summary, route_col):
             "excluded for": list(ex2.columns),
             "kind": ["call outcome" if c in _call_labels else "recruitment determinant"
                      for c in ex2.columns],
-            "sign-ups excluded": [int(ex2[c].sum()) for c in ex2.columns],
-        }).sort_values(["kind", "sign-ups excluded"], ascending=[True, False])
+        })
+        # One column per route, then the total. Same selection as the tables
+        # above, so every figure on the page is about the same people. The route
+        # of a sign-up is taken from the ROSTER row, not from anything the calls
+        # produced, so it is defined for everyone including the never-called.
+        _sig_routes = (recruit_base.loc[signed, route_col] if route_col else None)
+        _route_names = (sorted(x for x in _sig_routes.dropna().unique() if str(x).strip())
+                        if _sig_routes is not None else [])
+        if len(_route_names) > 1:
+            for _r in _route_names:
+                brk[_r] = [int(ex2.loc[_sig_routes == _r, c].sum()) for c in ex2.columns]
+        brk["all routes"] = [int(ex2[c].sum()) for c in ex2.columns]
+        brk = brk.sort_values(["kind", "all routes"], ascending=[True, False])
         st.markdown("**Who is screened out of the base**")
         st.dataframe(brk, width="stretch", hide_index=True)
+        if len(_route_names) <= 1:
+            st.caption("Showing one route. **Select both routes in the filter above** "
+                       "to get a column per route and compare them side by side.")
         st.caption(
             f"Counted over the {int(signed.sum())} sign-ups; reasons **overlap**, so they "
             f"do not add up to the {int(signed.sum()) - n_el} screened out. Outside the base: "
