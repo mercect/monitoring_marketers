@@ -119,7 +119,8 @@ def open_with_buckets(cases, summary):
     # table that names it - the same trap documented for was_partialsaved.
     eff = summary[[c for c in
                    ["pid", "total_attempts", "shifts_covered_n", "shifts_to_try",
-                    "numbers_tried_of_available", "times_rescheduled", "times_dropped",
+                    "numbers_tried_of_available", "numbers_wrong",
+                    "times_rescheduled", "times_dropped",
                     "times_noanswer", "times_off",
                     "last_section", "tab_id", "last_comment"]
                    if c in summary.columns]]
@@ -409,7 +410,7 @@ with tab_summary:
         ("To be assigned", n_assign, "not attempted yet"),
         ("To keep calling", n_keep,
          "no answer / phone off, or wrong number / incorrect respondent with other numbers to try"),
-        ("To be reviewed", n_review,
+        ("To be reviewed (hard to reach)", n_review,
          f"≥{SHIFTS_MOST}/5 shifts tried OR >{ATTEMPTS_MAX} attempts and still no "
          "completion. Callbacks are never escalated here"),
     ]
@@ -563,7 +564,7 @@ with tab_action:
             ("Callback", "⏰ To be followed up"),
             ("Keep calling", "📵 To keep calling"),
             ("Resume", "▶️ To be resumed (partial saved)"),
-            ("Review", "🔎 To be reviewed"),
+            ("Review", "🔎 To be reviewed (hard to reach)"),
         ]
         COLS = {
             # History COUNTS, not ever-flags: for a callback the useful question is
@@ -575,10 +576,19 @@ with tab_action:
                              "times_rescheduled", "times_dropped", "times_noanswer",
                              "times_off", "active_partialsave", "shifts_to_try",
                              "rsd_reason", "last_comment"],
-            "Keep calling": ["pid", "enumerator", "status", "callcode",
-                             "total_attempts", "days_open", "last_contact_date",
+            # Trimmed to what an enumerator needs to pick up the phone: who,
+            # what happened last, how hard it has been tried, which numbers are
+            # left, and whether any of them is a dud. status / days_open /
+            # last_contact_date are dropped - every pid here is open by
+            # definition, and neither date changes what to dial next.
+            # numbers_wrong is the survey's own count of this respondent's
+            # numbers that turned out WRONG. Not times_wrongnumber, which counts
+            # ATTEMPTS that ended on a wrong-number code: a number can be known
+            # bad without another attempt being spent on it, so that one reads 0
+            # while a number really is wrong.
+            "Keep calling": ["pid", "enumerator", "callcode", "total_attempts",
                              "shifts_to_try", "numbers_tried_of_available",
-                             "last_comment"],
+                             "numbers_wrong", "last_comment"],
             # last_section is the readable label, not last_section_n. tab_id comes
             # from tab_id or rs_tab_id, whichever the submission carried.
             "Resume":       ["pid", "enumerator", "status", "callcode",
