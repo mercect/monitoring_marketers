@@ -84,6 +84,28 @@ CC_EXHAUSTED = {"0_WN", "0_IN"}                        # all numbers tried -> cl
 # `was_partialsaved` survives on the summary as HISTORY ("was this ever partial-
 # saved?"), but nothing asking "is there a partial save to chase?" may read it.
 # =============================================================================
+def callback_when_for(callback_due, now) -> str:
+    """How soon a callback falls due, relative to the reference "now". ONE
+    definition, used by rollup() and summarize() so the case tables and the
+    tracking sheet cannot disagree about what is overdue.
+
+    Returns "" when there is no scheduled time at all, which is the NORMAL state
+    for most holds: the survey only computes callback_due for an *Updated
+    reschedule* log (rs_type=2), so a 4_D / 4_NA / 4_OF hold carries none. An
+    empty string here means "no appointment", never "not yet worked out"."""
+    if pd.isna(callback_due) or pd.isna(now):
+        return ""
+    if callback_due < now:
+        return "overdue"
+    if callback_due <= now + pd.Timedelta(hours=1):
+        return "within 1h"
+    if callback_due.date() == now.date():
+        return "today"
+    if callback_due.date() == (now + pd.Timedelta(days=1)).date():
+        return "tomorrow"
+    return "later"
+
+
 def is_active_partialsave(callcode) -> bool:
     """True when this callcode means a partial save is STILL held on a device."""
     return str(callcode).strip().startswith("4_")
@@ -424,18 +446,7 @@ def rollup(submissions: pd.DataFrame, now=None) -> pd.DataFrame:
             and pd.notna(callback_due) and callback_due < now
         )
         # when to call, relative to the reference "now"
-        callback_when = ""
-        if pd.notna(callback_due):
-            if callback_due < now:
-                callback_when = "overdue"
-            elif callback_due <= now + pd.Timedelta(hours=1):
-                callback_when = "within 1h"
-            elif callback_due.date() == now.date():
-                callback_when = "today"
-            elif callback_due.date() == (now + pd.Timedelta(days=1)).date():
-                callback_when = "tomorrow"
-            else:
-                callback_when = "later"
+        callback_when = callback_when_for(callback_due, now)
 
         numbers_wrong = pd.to_numeric(pd.Series([latest.get("numbers_wrong", 0)]), errors="coerce").iloc[0] or 0
         numbers_exhausted = int(callcode in CC_EXHAUSTED
@@ -744,6 +755,10 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
         df["_key"] = _s(df, "KEY").astype(str)
         df["_ord"] = df["_end"].fillna(df["_start"])
         df["_mod"] = _minutes_of_day(df["_start"].fillna(df["_end"]))
+        # Reference "now" for callback_when, derived exactly as rollup() does it
+        # (latest activity in the data, not wall-clock) so the tracking sheet and
+        # the case tables agree on what is overdue.
+        _now = pd.to_datetime(now) if now is not None else df["_ord"].max()
         # ATTEMPT = not a supervisor correction and not a 4_D held-partial log.
         # NB: is_partialsaved is deliberately NOT excluded — it fires on any deep
         # survey (incl. completions), so it would drop real attempts.
@@ -850,6 +865,11 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
                 # reschedule path. Resolved above, latest-4_* first.
                 "tab_id": tab_id,
                 "callback_due": _lv(latest, "callback_due"),
+                # Blank whenever there is no scheduled time, which is normal for
+                # a 4_D / 4_NA / 4_OF hold - only an *Updated reschedule* log
+                # (rs_type=2) makes the survey compute callback_due at all.
+                "callback_when": callback_when_for(
+                    _to_dt(pd.Series([_lv(latest, "callback_due")])).iloc[0], _now),
                 "callback_by": _lv(latest, "callback_by"),
                 "retake_mode": _lv(latest, "retake_mode"),
                 # ---- history (aggregated across submissions) -----------------

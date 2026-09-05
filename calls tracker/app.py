@@ -523,7 +523,9 @@ with tab_action:
                       "trying to resume it from **that device**; if you can't, hand the pid "
                       "to another enumerator. **Overlaps the other queues** — a `4_SC` held "
                       "partial also has a callback time, so it is listed here *and* under "
-                      "⏰ To be followed up.",
+                      "⏰ To be followed up. **A blank `callback_due` is normal** on a "
+                      "`4_D` / `4_NA` / `4_OF` hold: only an *Updated reschedule* log asks "
+                      "for a day and time, so the other kinds carry none.",
             "Review": f"Escalations only — pids tried across ≥{SHIFTS_MOST} shifts "
                       f"OR >{ATTEMPTS_MAX} attempts and still no completion. "
                       "**Callbacks are excluded**: a pid with a callback time has a "
@@ -591,7 +593,13 @@ with tab_action:
                              "numbers_wrong", "last_comment"],
             # last_section is the readable label, not last_section_n. tab_id comes
             # from tab_id or rs_tab_id, whichever the submission carried.
+            # callback_when / callback_due belong here as much as on the Callback
+            # queue: a 4_SC held partial is a partial WITH an appointment, and
+            # without these the enumerator could see it was held but not when it
+            # was promised. Blank for a 4_D / 4_NA / 4_OF hold, which carries no
+            # scheduled time - see the caption under this queue.
             "Resume":       ["pid", "enumerator", "status", "callcode",
+                             "callback_when", "callback_due",
                              "total_attempts", "days_open", "last_contact_date",
                              "last_section", "tab_id", "active_partialsave",
                              "times_rescheduled", "times_dropped", "times_noanswer",
@@ -865,7 +873,8 @@ with tab_partial:
         # ---- one row per partial save ---------------------------------------
         st.markdown("#### 📄 Every partial save")
         pcols = [c for c in ["pid", "tab_id", "enumerator", "last_submission_time",
-                             "current_status", "current_callcode", "action_bucket",
+                             "current_status", "current_callcode",
+                             "callback_when", "callback_due", "action_bucket",
                              "last_section", "total_attempts", "days_open",
                              "route_recruited", "last_comment"]
                  if c in ps.columns]
