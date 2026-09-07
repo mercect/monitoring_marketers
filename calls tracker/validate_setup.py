@@ -41,7 +41,13 @@ KNOWN_CALLCODES = {"", "1", "0_R", "0_UN", "0_IN", "0_WN", "0_OC", "0_ATTR",
                    # attempt on a case already held as a partial save). Real
                    # codes the form emits - they were missing here, so every
                    # export carrying one raised a spurious "unknown callcode".
-                   "3_SC", "3_D", "3_NA", "3_OF", "4_SC", "4_D", "4_NA", "4_OF"}
+                   "3_SC", "3_D", "3_NA", "3_OF", "4_SC", "4_D", "4_NA", "4_OF",
+                   # Supervisor closures. The form builds these as
+                   # concat('0_', callcode_sp), so the suffix is whatever code
+                   # the supervisor picked - ANY 2_/3_ suffix can appear behind
+                   # a 0_. These four are the ones the 2026-09 sheet actually
+                   # carries; they were reported as unknown codes on every run.
+                   "0_D", "0_SC", "0_NA", "0_OF"}
 KNOWN_STATUS = {"", "ACTIVE", "PENDING", "INACTIVE", "NOTIFICATION"}
 KNOWN_REC = {"", "eligible", "ineligible", "refusal", "missing"}
 # phone_sample_status (2026-08 data-entry sheet) — the sign-up status column that

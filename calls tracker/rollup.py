@@ -84,6 +84,25 @@ CC_EXHAUSTED = {"0_WN", "0_IN"}                        # all numbers tried -> cl
 # `was_partialsaved` survives on the summary as HISTORY ("was this ever partial-
 # saved?"), but nothing asking "is there a partial save to chase?" may read it.
 # =============================================================================
+def is_supervisor_closure_row(df: pd.DataFrame) -> pd.Series:
+    """Rows where a SUPERVISOR closed the case. ONE definition, used by rollup()
+    and summarize() so they cannot disagree about which cases are shut.
+
+    A supervisor closure is TERMINAL, the same way a completion is. Its whole
+    purpose is "stop calling this person" - the closures on this sheet say
+    things like "asked to stop calling" - so an ordinary call logged afterwards
+    is a coordination failure, not a reopening, and must not put the respondent
+    back in a work queue. Enumerators cannot reopen a closed case by submitting
+    against it; a SUPERVISOR still can, because the cut is taken at the LAST
+    supervisor row, so a later correction always wins.
+
+    Reads either flag: is_supervisor_closure is what the export carries,
+    sup_correction is what the form calls it, and rows exist with one but not
+    the other."""
+    return (_truthy(_s(df, "is_supervisor_closure"))
+            | _truthy(_s(df, "sup_correction")))
+
+
 def callback_when_for(callback_due, now) -> str:
     """How soon a callback falls due, relative to the reference "now". ONE
     definition, used by rollup() and summarize() so the case tables and the
@@ -419,6 +438,21 @@ def rollup(submissions: pd.DataFrame, now=None) -> pd.DataFrame:
             g = g.iloc[:_first + 1]
         recontacted = n_after_complete > 0
 
+        # A supervisor closure is terminal too - see is_supervisor_closure_row.
+        # COMPLETION WINS over it, deliberately and regardless of order: a pid
+        # closed as "phone off" that the team then got through to and FINISHED
+        # is finished, and that really happens (YK39388A4 on the 2026-09 sheet).
+        # So this only runs when the pid never completed. The cut is at the LAST
+        # supervisor row, so a supervisor who re-opens or re-closes still wins,
+        # while an enumerator logging against a shut case does not.
+        n_after_close = 0
+        if not ever_complete:
+            _shut = is_supervisor_closure_row(g)
+            if _shut.any():
+                _last = int(len(_shut) - 1 - _shut.values[::-1].argmax())
+                n_after_close = len(g) - _last - 1
+                g = g.iloc[:_last + 1]
+
         latest = g.iloc[-1]
         callcode = str(latest.get("callcode", "")).strip()
         status = status_for(callcode, latest.get("status", ""))
@@ -505,6 +539,10 @@ def rollup(submissions: pd.DataFrame, now=None) -> pd.DataFrame:
             # themselves are NOT counted anywhere; only recorded here.
             "recontacted_after_complete": int(recontacted),
             "calls_after_complete": n_after_complete,
+            # Same idea for a supervisor closure: counted and shown, never
+            # silently absorbed, so the coordination failure stays visible.
+            "calls_after_close": n_after_close,
+            "recontacted_after_close": int(n_after_close > 0),
             "attempts_total": attempts,
             "ever_picked_up": int(ever_picked),
             "resume_rounds": resume_rounds,
@@ -797,6 +835,19 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
         df, _n_after = drop_after_complete(df, ["_end", "_subdate", "_key"],
                                            complete_mask=df["_complete"])
 
+        # Then cut at a supervisor closure, same terminal rule as rollup() - see
+        # is_supervisor_closure_row. Applied AFTER the completion cut and only to
+        # pids that never completed, so a completion still wins over an earlier
+        # closure. Marked on the LAST supervisor row per pid, so a later
+        # supervisor correction re-opens the case and an enumerator cannot.
+        df["_shut"] = is_supervisor_closure_row(df)
+        _ever_done = df.groupby("pid")["_complete"].transform("any")
+        _rev = df.iloc[::-1]
+        _last_shut = (_rev["_shut"] & ~_rev.groupby("pid")["_shut"].cumsum().gt(1)).iloc[::-1]
+        df, _n_shut = drop_after_complete(
+            df.drop(columns=["_shut"]), ["_end", "_subdate", "_key"],
+            complete_mask=(_last_shut & ~_ever_done))
+
         rows = []
         for pid, g in df.groupby("pid", sort=False):
             g = g.sort_values(["_end", "_subdate", "_key"], na_position="first")
@@ -852,6 +903,8 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
                 "active_partialsave": int(active_ps),
                 "calls_after_complete": int(_n_after.get(pid, 0)),
                 "recontacted_after_complete": int(_n_after.get(pid, 0) > 0),
+                "calls_after_close": int(_n_shut.get(pid, 0)),
+                "recontacted_after_close": int(_n_shut.get(pid, 0) > 0),
                 "last_is_answered": int(bool(latest.get("_answered", False))),
                 "last_is_incorrect": int(bool(latest.get("_incorrect", False))),
                 "last_section_n": _lv(latest, "last_section_n"),
@@ -968,6 +1021,7 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
                 "numbers_tried", "numbers_available", "_elig1", "_elig2",
                 # never-called pids have no attempt row, so these arrive NaN
                 "calls_after_complete", "recontacted_after_complete",
+                "calls_after_close", "recontacted_after_close",
                 "was_partialsaved", "active_partialsave", "ever_attempted"]
     for c in int_cols:
         out[c] = pd.to_numeric(_s(out, c), errors="coerce").fillna(0).astype(int)

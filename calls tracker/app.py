@@ -46,6 +46,7 @@ FLAG_COLS = {
     "ineligible_underage", "ineligible_outside_western_area", "ineligible_no_owned_phone",
     "ineligible_row_x", "ineligible_language_barrier", "ineligible_deaf_mute",
     "ineligible_nonpassenger_card", "recontacted_after_complete", "was_partialsaved",
+    "recontacted_after_close",
     "active_partialsave",
 }
 
@@ -437,6 +438,25 @@ with tab_summary:
         st.dataframe(_rc[_rc_cols], width="stretch", hide_index=True)
         st.caption("`enumerator` and `current_callcode` are from the LATEST call — "
                    "i.e. whoever rang them after the interview was already done.")
+
+    # Closed by a supervisor, then logged against anyway. Same shape as the block
+    # above: the rollup keeps them closed (a supervisor closure is absorbing), so
+    # they are out of the queues — but the call was made, and a supervisor closure
+    # usually means the respondent asked not to be called again.
+    _ac = summary_view[summary_view.get("recontacted_after_close", 0) == 1]
+    if len(_ac):
+        st.warning(
+            f"⚠️ **{len(_ac)} respondent(s) were logged against AFTER a supervisor "
+            "closed the case.** They stay closed here and are out of the queues, but "
+            "a closure usually means the respondent asked not to be called again — "
+            "so check how a shut case got back onto someone's list.")
+        _ac_cols = [c for c in ["pid", "route_recruited", "enumerator",
+                                "current_callcode", "calls_after_close",
+                                "last_submission_time"] if c in _ac.columns]
+        st.dataframe(_ac[_ac_cols], width="stretch", hide_index=True)
+        st.caption("`current_callcode` is the SUPERVISOR'S closing code — the later "
+                   "submissions are excluded, which is why the case reads closed. "
+                   "`calls_after_close` is how many were logged after it.")
 
     # --- Inactive pids: closed / completed, by reason (mirrors the Active table)-
     _inact_rows = summary_view[
@@ -1003,11 +1023,15 @@ with st.expander("🔧 What this page is built from — sources, filters, checks
     st.markdown("**Checks**")
     _rc = int(pd.to_numeric(summary.get("recontacted_after_complete", 0),
                             errors="coerce").fillna(0).sum())
+    _ac_n = int(pd.to_numeric(summary.get("recontacted_after_close", 0),
+                              errors="coerce").fillna(0).sum())
     _checks = [
         {"check": "Signed-up rows that also carry an ineligibility flag",
          "count": n_conflict, "verdict": "OK" if not n_conflict else "⚠️ check data entry"},
         {"check": "Completed, then called again anyway",
          "count": _rc, "verdict": "OK" if not _rc else "⚠️ see Calls summary"},
+        {"check": "Closed by a supervisor, then logged against anyway",
+         "count": _ac_n, "verdict": "OK" if not _ac_n else "⚠️ see Calls summary"},
         {"check": "Pids with attempts but no roster row",
          "count": n_offroster_cases, "verdict": "OK" if not n_offroster_cases else "older sample"},
     ]
