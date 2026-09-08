@@ -10,7 +10,7 @@ from rollup import (summary_kpis, recruit_eligible, recruit_exclusions,
                     _signup_class, _first_col, ELIG_FLAG_LABELS,
                     SIGNUP_STATUS_COLS, STAGE2_CALLCODES, SIGNED_UP_STATUS,
                     CALL_OUTCOME_EXCLUSIONS, ineligible_columns)
-from data_io import default_routes
+from data_io import newest_batch
 
 
 def _formula(*lines):
@@ -37,10 +37,12 @@ def render_indicators(summary, route_col):
     st.markdown("### Recruitment")
     rec_routes = (sorted(x for x in summary[route_col].dropna().unique() if str(x).strip())
                   if route_col else [])
-    # Opens on DEFAULT_ROUTES (see data_io), same as the call-tracking sidebar,
-    # so the two dashboards report the same population unless a PI widens it.
+    # Opens on the newest recruitment batch (see newest_batch), same as the
+    # call-tracking sidebar, so the two dashboards report the same population
+    # unless a PI widens it.
+    _, _batch_routes = newest_batch(summary, route_col)
     rec_pick = (st.multiselect("Filter recruitment by route", rec_routes,
-                               default=default_routes(rec_routes),
+                               default=_batch_routes or rec_routes,
                                key="rec_route") if rec_routes else [])
     recruit_base = summary
     if route_col and rec_pick and len(rec_pick) != len(rec_routes):

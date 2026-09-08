@@ -23,9 +23,9 @@ import pandas as pd
 import streamlit as st
 
 from auth import require_password
-from data_io import (load_all, route_column, default_routes, REFRESH_SECONDS,
-                     code_stamp, EXPECTED_SAMPLE_TAB)
-from rollup import (OPEN_STATUSES, _to_dt, effort_by_enumerator, summary_kpis,
+from data_io import (load_all, route_column, newest_batch, parse_dates,
+                     REFRESH_SECONDS, code_stamp, EXPECTED_SAMPLE_TAB)
+from rollup import (OPEN_STATUSES, effort_by_enumerator, summary_kpis,
                     eligible_roster, recruit_exclusions,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME)
 
@@ -264,19 +264,7 @@ if right.button("🔄 Refresh now"):
 st.sidebar.header("Filters")
 
 
-def parse_dates(s):
-    """Parse a date column for filtering, tz-naive.
-
-    The survey timestamps are ISO, but the roster's date_recruited arrives from
-    the sheet as dd/mm/yyyy — which pandas reads month-first by default, so
-    05/06/2026 would land in May. Day-first only when the column looks like it."""
-    s = pd.Series(s).astype(str).str.strip()
-    if s.str.match(r"^\d{1,2}/\d{1,2}/\d{4}").any():
-        return pd.to_datetime(s, errors="coerce", dayfirst=True)
-    return _to_dt(s)
-
-
-def date_range_filter(label, dates, pids, help=None):
+def date_range_filter(label, dates, pids, help=None, default_from=None):
     """Sidebar date-range picker -> the set of pids inside the picked range.
 
     Returns None when the picker still spans the whole data, which means "don't
@@ -290,7 +278,13 @@ def date_range_filter(label, dates, pids, help=None):
     if lo == hi:                                # a single day in the data: nothing to pick
         st.sidebar.caption(f"**{label}** — all on {lo}")
         return None
-    got = st.sidebar.date_input(label, value=(lo, hi), min_value=lo, max_value=hi, help=help)
+    # Opens at `default_from` (the newest recruitment date) rather than at the
+    # start of the data, so the dashboard lands on the batch being worked now.
+    # Ignored if it falls outside the data, so a stale default cannot produce an
+    # out-of-range picker. Widening back to the full span still means "no filter".
+    start = default_from if (default_from and lo <= default_from <= hi) else lo
+    got = st.sidebar.date_input(label, value=(start, hi), min_value=lo, max_value=hi,
+                                help=help)
     if not isinstance(got, (tuple, list)) or len(got) != 2:
         return None                             # mid-pick: only the start date chosen yet
     a, b = got
@@ -304,16 +298,23 @@ def date_range_filter(label, dates, pids, help=None):
 route_col = route_column(summary)
 route_options = (sorted(x for x in summary[route_col].dropna().unique() if str(x).strip())
                  if route_col else [])
-# Opens on DEFAULT_ROUTES (see data_io), not on every route. Widen it here to
-# see the rest — nothing is hidden, it just is not selected on first load.
+# Both filters open on the MOST RECENT recruitment batch — see newest_batch().
+# They are derived from the same call, so the route and the date can never
+# contradict each other and leave the page empty.
+_batch_date, _batch_routes = newest_batch(summary, route_col)
 picked_route = (st.sidebar.multiselect("Route", route_options,
-                                       default=default_routes(route_options))
+                                       default=_batch_routes or route_options)
                 if route_options else [])
 
 # when the respondent was recruited (roster date)
 rec_pids = date_range_filter(
     "Recruitment date", summary.get("date_recruited", pd.Series(dtype=str)), summary["pid"],
-    help="When the respondent was recruited (sample tab).")
+    help="When the respondent was recruited (sample tab).",
+    default_from=_batch_date)
+if _batch_date:
+    st.sidebar.caption(f"Opens on the latest batch recruited **{_batch_date:%d %b}**"
+                       + (f" ({', '.join(_batch_routes)})" if _batch_routes else "")
+                       + ". Widen either filter to see earlier ones.")
 
 summary_view = summary
 # combine the pid-keyed filters (None = that filter is untouched). keep_pids stays

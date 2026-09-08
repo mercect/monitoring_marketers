@@ -14,7 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from rollup import (rollup, summarize, frame_from_attempts, sheet_csv,
-                    hide_columns, drop_test_attempts)
+                    hide_columns, drop_test_attempts, _to_dt)
 
 REFRESH_SECONDS = 300
 
@@ -160,26 +160,43 @@ def route_column(summary):
                  if c == "route_recruited" or "route" in c.lower()), None)
 
 
-# The route(s) both dashboards OPEN ON. Every route filter is a multiselect the
-# user can widen back to everything, so this is a starting view and not a
-# restriction - nothing is hidden, it just is not selected on first load.
-# To change which route the team lands on, edit this tuple and nothing else.
-DEFAULT_ROUTES = ("Lumley - Jui",)
+def parse_dates(s):
+    """Parse a roster date column, tz-naive. Shared by the sidebar filter and
+    newest_batch() so they cannot disagree about what a date means.
+
+    The survey timestamps are ISO, but the roster's date_recruited arrives from
+    the sheet as dd/mm/yyyy - which pandas reads month-first by default, so
+    05/06/2026 would land in May. Day-first only when the column looks like it."""
+    s = pd.Series(s).astype(str).str.strip()
+    if s.str.match(r"^\d{1,2}/\d{1,2}/\d{4}").any():
+        return pd.to_datetime(s, errors="coerce", dayfirst=True)
+    return _to_dt(s)
 
 
-def default_routes(options):
-    """Which routes a route filter should start with, given what the sheet has.
+def newest_batch(summary, route_col=None):
+    """(date, routes) of the MOST RECENT recruitment batch on the roster.
 
-    Compared on letters and digits ONLY - case, spaces, dashes and punctuation are
-    stripped out first - so a cosmetic re-spelling on the sheet ("Lumley- Jui",
-    "lumley  jui") still matches instead of silently emptying the filter. Same
-    normalisation rollup.eligible_roster uses on phone_sample_status.
+    Both dashboards OPEN ON this batch: the recruitment-date filter starts at
+    that date and the route filter starts on the route(s) recruited then. Every
+    filter is still a widget the user can widen back to everything, so this is a
+    starting view and not a restriction - nothing is hidden, it just is not
+    selected on first load.
 
-    Falls back to EVERY route when none of the preferred names is present: a
-    filter defaulting to nothing renders a blank dashboard, which reads as a data
-    failure rather than as a filter, and that is the worse way to be wrong."""
-    def _norm(x):
-        return re.sub(r"[^a-z0-9]", "", str(x).lower())
-    wanted = {_norm(r) for r in DEFAULT_ROUTES}
-    hit = [o for o in options if _norm(o) in wanted]
-    return hit or list(options)
+    DERIVED, not hardcoded, for two reasons. It keeps working when the next
+    batch is recruited, with no edit. And it keeps the two filters CONSISTENT:
+    on this study each recruitment date is one route (28/08 Bawbaw, 01/09 Jui,
+    04/09 Regent), so a route pinned by name while the date default moved on
+    would intersect to nothing and render a blank dashboard.
+
+    Returns (None, []) when the roster carries no usable date, and the callers
+    then fall back to selecting everything."""
+    if "date_recruited" not in summary.columns or not len(summary):
+        return None, []
+    d = parse_dates(summary["date_recruited"])
+    if d.dropna().empty:
+        return None, []
+    last = d.max().date()
+    on_last = summary.loc[d.dt.date == last]
+    routes = (sorted(x for x in on_last[route_col].dropna().unique() if str(x).strip())
+              if route_col and route_col in on_last.columns else [])
+    return last, routes
