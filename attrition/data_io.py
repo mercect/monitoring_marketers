@@ -27,8 +27,13 @@ REFRESH_SECONDS = 300
 EXPECTED_SAMPLE_TAB = "data_entry"
 
 TAB_NAMES = {
-    "249772860": "phone_survey",
-    "517204918": "data_entry",
+    # current round (new spreadsheet, October 2026)
+    "1615108913": "phone_survey",
+    "970246647": "data_entry",
+    # pilot round (August 2026 spreadsheet) - labelled as old so a stale
+    # secrets link trips the wrong-roster banner instead of passing silently
+    "249772860": "phone_survey (pilot round)",
+    "517204918": "data_entry (pilot round)",
     "716196793": "data_entry_archived",
 }
 
