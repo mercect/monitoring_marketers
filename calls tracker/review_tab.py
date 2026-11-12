@@ -22,13 +22,18 @@ def _code_label(code):
     return f"{code} — {rv.CLOSE_CODES[code]}" if code in rv.CLOSE_CODES else code
 
 
-def _history(subs, pid):
+def _history(subs, pid, all_columns=False):
     """Every submission for the pid, oldest first. Communications form rows are
-    greyed: they report timing / status only and never carry interview content."""
+    greyed: they report timing / status only and never carry interview content.
+    all_columns: the key columns, then every other non-empty column."""
     h = subs[subs["pid"].astype(str).str.strip() == pid].copy()
     h["_t"] = pd.to_datetime(h.get("endtime", ""), errors="coerce", utc=True, format="ISO8601")
     h = h.sort_values("_t", na_position="first")
     cols = [c for c in HISTORY_COLS if c in h.columns]
+    if all_columns:
+        filled = [c for c in h.columns if c not in cols and not c.startswith("_")
+                  and h[c].astype(str).str.strip().replace("nan", "").ne("").any()]
+        cols = cols + filled
     out = h[cols].reset_index(drop=True)
     if "endtime" in out.columns:
         out["endtime"] = out["endtime"].astype(str).str[:16].str.replace("T", " ")
@@ -42,6 +47,66 @@ def _history(subs, pid):
             return ["font-style: italic; background-color: rgba(51,154,240,0.10)"] * len(row)
         return [""] * len(row)
     return out.style.apply(shade, axis=1)
+
+
+def _num(v):
+    n = pd.to_numeric(pd.Series([v]), errors="coerce").iloc[0]
+    return 0 if pd.isna(n) else int(n)
+
+
+def _case_facts(summary, subs, pid):
+    """The history a reviewer checks before deciding: effort, timing, shifts
+    still untried and whether a partial was saved. From the summary row (same
+    numbers as the Tracking sheet) plus the last REAL call from the submissions
+    (supervisor / dashboard rows are paperwork, not attempts)."""
+    s = summary[summary["pid"] == pid]
+    s = s.iloc[0] if len(s) else pd.Series(dtype=object)
+    h = subs[subs["pid"].astype(str).str.strip() == pid]
+    calls = h[~rv._is_sup(h)]
+    t = pd.to_datetime(calls.get("endtime", pd.Series(dtype=str)), errors="coerce",
+                       utc=True, format="ISO8601")
+    last_call = f"{t.max():%d %b %H:%M}" if t.notna().any() else "—"
+
+    if _num(s.get("active_partialsave", 0)) == 1:
+        # The tablet only: for a held partial the summary's last_section can come
+        # from the Communications form, which never counts as section reached.
+        where = str(s.get("tab_id", "")).strip()
+        partial = "**yes, held now**" + (f" on {where}" if where else "")
+    elif _num(s.get("was_partialsaved", 0)) == 1:
+        partial = "earlier, not held now"
+    else:
+        partial = "no"
+
+    # Plain wrapping text rather than st.metric tiles: tiles cut long values
+    # ("06 Nov 11:01", "A, B, D, E") to "0…" on a narrow window.
+    with st.container(border=True):
+        st.markdown(
+            f"**Attempts** {_num(s.get('total_attempts', 0))} &nbsp;·&nbsp; "
+            f"**Last attempted** {last_call} &nbsp;·&nbsp; "
+            f"**Reschedules** {_num(s.get('times_rescheduled', 0))} &nbsp;·&nbsp; "
+            f"**Drops** {_num(s.get('times_dropped', 0))}  \n"
+            f"**Shifts not yet tried** {s.get('shifts_to_try', '') or '—'} &nbsp;·&nbsp; "
+            f"**Partial saved** {partial}")
+        st.caption(f"No answer {_num(s.get('times_noanswer', 0))} · phone off "
+                   f"{_num(s.get('times_off', 0))} · wrong number "
+                   f"{_num(s.get('times_wrongnumber', 0))} · numbers tried "
+                   f"{s.get('numbers_tried_of_available', '') or '—'} · first attempt "
+                   f"{str(s.get('first_attempt_time', '') or '—')[:16]}. "
+                   "Last attempted = last real call, not supervisor / dashboard "
+                   "entries. Shifts: A 07:30–09:30 · B 09:30–12:30 · C 12:30–15:30 "
+                   "· D 15:30–17:30 · E 17:30–20:30.")
+
+
+def _observations(subs, pid):
+    """Dropdown with every submission for the pid: the key columns first, then
+    every other column that has a value on at least one of its rows."""
+    h = subs[subs["pid"].astype(str).str.strip() == pid]
+    with st.expander(f"📂 All observations for {pid} ({len(h)})"):
+        st.dataframe(_history(subs, pid, all_columns=True), hide_index=True,
+                     width="stretch")
+        st.caption("Oldest first. Grey rows = Communications form (timing / status "
+                   "only, never interview content). Blue italic rows = earlier "
+                   "dashboard entries.")
 
 
 def _save(rows, what):
@@ -111,15 +176,15 @@ def render(summary, subs, open_cases, decisions, dmeta):
                        horizontal=True, label_visibility="collapsed", key="review_section")
 
     if section.startswith("✔"):
-        _validate(vq, subs, can_save)
+        _validate(vq, summary, subs, can_save)
     elif section.startswith("⚖"):
-        _decide(dq, subs, keys, can_save)
+        _decide(dq, summary, subs, keys, can_save)
     else:
         _log(decisions)
 
 
 # -----------------------------------------------------------------------------
-def _validate(vq, subs, can_save):
+def _validate(vq, summary, subs, can_save):
     st.markdown("Every case an **enumerator** closed (`0_`) or completed (`1`) that you "
                 "have not validated yet. Your own closures count as validated already. "
                 "**Confirm** or **Correct** makes it final — a later enumerator call "
@@ -167,9 +232,8 @@ def _validate(vq, subs, can_save):
     choice = st.selectbox("Pid", list(labels), key="review_vpid")
     pid = labels[choice]
     rec = vq[vq["pid"] == pid].iloc[0]
-    st.dataframe(_history(subs, pid), hide_index=True, width="stretch")
-    st.caption("Grey rows = Communications form (timing / status only, never interview "
-               "content). Blue italic rows = earlier dashboard entries.")
+    _case_facts(summary, subs, pid)
+    _observations(subs, pid)
 
     current = str(rec["current_callcode"]).strip()
     actions = ["Confirm", "Correct"] + (["Send back"] if rec["kind"] == "closure" else [])
@@ -191,7 +255,7 @@ def _validate(vq, subs, can_save):
 
 
 # -----------------------------------------------------------------------------
-def _decide(dq, subs, keys, can_save):
+def _decide(dq, summary, subs, keys, can_save):
     st.markdown("Open pids in **▶️ To be resumed (partial saved)** and **🔎 To be "
                 "reviewed (hard to reach)**. **Close** ends the case with a `0_` code "
                 "(final). **Keep trying** leaves it in its queue and shows your comment "
@@ -208,9 +272,8 @@ def _decide(dq, subs, keys, can_save):
     labels = {f"{p} · {q} · {c}": p for p, q, c in zip(dq["pid"], dq["queue"], dq["callcode"])}
     choice = st.selectbox("Pid", list(labels), key="review_dpid")
     pid = labels[choice]
-    st.dataframe(_history(subs, pid), hide_index=True, width="stretch")
-    st.caption("Grey rows = Communications form (timing / status only, never interview "
-               "content). Blue italic rows = earlier dashboard entries.")
+    _case_facts(summary, subs, pid)
+    _observations(subs, pid)
 
     action = st.radio("Action", ["Close", "Keep trying"], horizontal=True,
                       key=f"review_dact_{pid}")
