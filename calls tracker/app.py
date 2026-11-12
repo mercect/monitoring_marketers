@@ -80,12 +80,47 @@ def style_overdue(df, when_col="callback_when"):
     colour the wrong rows."""
     if when_col not in df.columns or df.empty:
         return df
-    overdue = df[when_col].astype(str).str.strip().str.lower().eq("overdue")
+    # "overdue" from callback_when, or "Yes" from the follow-up queue's overdue column
+    overdue = df[when_col].astype(str).str.strip().str.lower().isin(["overdue", "yes"])
     if not overdue.any():
         return df
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
     styles.loc[overdue, :] = OVERDUE_CSS
     return df.style.apply(lambda _: styles, axis=None)
+
+
+NO_CALLBACK_TIME = "Not specified, check final comments"
+
+
+def _blank(s):
+    return s.fillna("").astype(str).str.strip().replace({"nan": ""}).eq("")
+
+
+def followup_view(rows):
+    """Display columns for ⏰ To be followed up (the Callback queue).
+
+    overdue      Yes / No, from callback_overdue (red rows, see style_overdue)
+    callback_due blank -> "Not specified, check final comments": a 2_D drop or a
+                 reschedule logged without a time carries none, and the time, if
+                 any, was written in the comment instead
+    callback_by  WHO calls back: the survey records "enumerator" or "respondent".
+                 blank -> "enumerator" (our side calls back unless the respondent
+                 said they would)
+    comments     rsd_reason and last_comment (the final comment) in one column,
+                 so the queue needs one free-text column instead of two"""
+    out = rows.copy()
+    out["overdue"] = (pd.to_numeric(out.get("callback_overdue", 0), errors="coerce")
+                      .fillna(0).eq(1).map({True: "Yes", False: "No"}))
+    due = out.get("callback_due", pd.Series("", index=out.index)).fillna("").astype(str).str.strip()
+    out["callback_due"] = due.mask(_blank(due), NO_CALLBACK_TIME)
+    by = out.get("callback_by", pd.Series("", index=out.index)).fillna("").astype(str).str.strip()
+    out["callback_by"] = by.mask(_blank(by), "enumerator")
+    rsd = out.get("rsd_reason", pd.Series("", index=out.index)).fillna("").astype(str).str.strip()
+    com = out.get("last_comment", pd.Series("", index=out.index)).fillna("").astype(str).str.strip()
+    out["comments"] = [
+        r if (not c or c == r) else c if not r else f"{r} — {c}"
+        for r, c in zip(rsd.replace({"nan": ""}), com.replace({"nan": ""}))]
+    return out
 
 
 def count_pct(series, label):
@@ -552,7 +587,10 @@ with tab_action:
                         "callback stays in this list however many shifts or attempts "
                         "it has already taken, and however overdue it is: a time was "
                         "promised to the respondent, so it keeps being owed. "
-                        "Callbacks are **never** moved to 🔎 To be reviewed.",
+                        "Callbacks are **never** moved to 🔎 To be reviewed. "
+                        "`callback_by` = who calls back (blank on the form = "
+                        "enumerator). `comments` = the reason given (rsd_reason) — "
+                        "then the final comment.",
             "Keep calling": "Keep dialing (no-answer / phone-off), or try the other numbers "
                             "on file (wrong number / incorrect respondent). Watch shifts "
                             "tried and total attempts.",
@@ -608,13 +646,13 @@ with tab_action:
         COLS = {
             # History COUNTS, not ever-flags: for a callback the useful question is
             # how many times this has already happened, not merely whether it has.
-            "Callback":     ["pid", "enumerator", "status", "callcode",
-                             "total_attempts", "days_open", "last_contact_date",
-                             "callback_when", "callback_due", "callback_by",
-                             "review_reason",
-                             "times_rescheduled", "times_dropped", "times_noanswer",
-                             "times_off", "active_partialsave", "shifts_to_try",
-                             "rsd_reason", "last_comment"],
+            # Trimmed to what the enumerator needs to make the callback. The
+            # display columns overdue / comments are built in the loop below
+            # (followup_view): blanks in callback_due / callback_by are filled
+            # in, and rsd_reason + last_comment are merged into one column.
+            "Callback":     ["pid", "callcode", "overdue", "callback_due",
+                             "callback_by", "shifts_to_try", "active_partialsave",
+                             "total_attempts", "last_contact_date", "comments"],
             # Trimmed to what an enumerator needs to pick up the phone: who,
             # what happened last, how hard it has been tried, which numbers are
             # left, and whether any of them is a dud. status / days_open /
@@ -664,6 +702,7 @@ with tab_action:
                 rows = rows.sort_values(["callback_overdue", "_cb_dt"],
                                         ascending=[False, True],
                                         na_position="last").drop(columns="_cb_dt")
+                rows = followup_view(rows)
             elif key == "Keep calling":
                 # least-worked first: fewest shift windows tried, then fewest attempts
                 rows = rows.sort_values(["shifts_covered_n", "total_attempts"],
@@ -687,8 +726,9 @@ with tab_action:
             else:
                 # style_overdue no-ops on a queue with no callback_when column,
                 # so this is safe for all four and marks it wherever it is shown.
-                st.dataframe(style_overdue(yesno(rows)), width="stretch",
-                             hide_index=True)
+                st.dataframe(style_overdue(yesno(rows),
+                                           "overdue" if key == "Callback" else "callback_when"),
+                             width="stretch", hide_index=True)
                 st.caption(SHIFT_LEGEND)
 
         # non-exclusive overlay: WhatsApp outreach (these pids also appear above)
