@@ -142,7 +142,7 @@ def load_sample(_subs):
         "rows": 0, "dropped_test": 0, "read": f"{datetime.now():%H:%M:%S}"}
 
 
-def load_all():
+def load_all(decisions=None):
     """subs + sample as loaded, plus the rolled-up cases and per-pid summary.
 
     The rollup runs on the FULL sample tab, then hide_columns() drops the
@@ -152,6 +152,12 @@ def load_all():
     them, while every derived column is still computed from the whole sheet."""
     subs, a_meta = load_submissions()
     sample, s_meta = load_sample(subs)
+    # Supervisor review: each decision that changes a status becomes a
+    # supervisor row BEFORE the rollup, so every tab sees the reviewed status.
+    # Only the call-tracking monitor passes `decisions`; the PI dashboard does not.
+    if decisions is not None and len(decisions):
+        from review import apply_decisions
+        subs = apply_decisions(subs, decisions)
     cases = rollup(subs)
     summary = hide_columns(summarize(sample, subs))
     meta = {"attempts": a_meta, "sample": s_meta, "code_stamp": code_stamp()}

@@ -4,3 +4,7 @@
 # bump is a real break risk.
 streamlit>=1.50,<2
 pandas>=2.0,<3
+# Supervisor review (calls tracker/review.py) writes the `decisions` tab of the
+# Google Sheet through a service account. Same pins as the colleague's guide.
+gspread>=6,<7
+google-auth>=2.20

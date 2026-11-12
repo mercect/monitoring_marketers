@@ -28,6 +28,8 @@ from data_io import (load_all, route_column, newest_batch, parse_dates,
 from rollup import (OPEN_STATUSES, effort_by_enumerator, summary_kpis,
                     eligible_roster, recruit_exclusions,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME)
+import review
+import review_tab
 
 st.set_page_config(page_title="Call-Tracking Monitor Dashboard", page_icon="📞", layout="wide")
 
@@ -192,7 +194,10 @@ SUMMARY_COLS = [
 st.title("📞 Call-Tracking Monitor Dashboard")
 
 try:
-    subs, sample, cases, summary, meta = load_all()
+    # Supervisor review log (review.py). Never raises: when the service account
+    # is not set up it comes back empty and the dashboard runs exactly as before.
+    decisions, decisions_meta = review.load_decisions()
+    subs, sample, cases, summary, meta = load_all(decisions=decisions)
 except Exception as e:
     st.error(f"Could not load / roll up the data.\n\n{e}")
     st.stop()
@@ -236,6 +241,15 @@ n_offroster_cases = int((~cases["pid"].isin(_roster_pids)).sum())
 cases = cases[cases["pid"].isin(_roster_pids)].copy()
 subs = subs[subs["pid"].isin(_roster_pids)].copy() if "pid" in subs.columns else subs
 
+# Supervisor review: the note for the enumerators (keep trying / sent back) rides
+# on every case row so each queue can show it, and a validated flag for the
+# Inactive tab. cases_roster is kept BEFORE the sidebar filters, for the review
+# tab, which must list everything waiting whichever batch the sidebar is on.
+_notes = review.notes_by_pid(decisions)
+cases["supervisor_note"] = cases["pid"].map(_notes).fillna("")
+_validated = review.validated_pids(decisions)
+cases_roster = cases
+
 # What each tab is for. Lives at the top of the Calls summary tab (below), not
 # here — the header stays to the title, the data-source line and Refresh.
 TAB_LEGEND = """
@@ -245,6 +259,7 @@ TAB_LEGEND = """
 - **💾 Partial saves** — which tablet each **still-held** partial is sitting on
 - **👤 By enumerator** — what's on each plate now, + calls made
 - **📋 Tracking sheet** — one row per pid, full detail
+- **🛂 Supervisor review** — validate closures and decide hard cases (editing is password-locked)
 """
 
 _, right = st.columns([4, 1])
@@ -332,9 +347,10 @@ if keep_pids is not None:
 
 # Tab ORDER is set here; the `with tab_*:` bodies further down can stay in any
 # order, Streamlit renders each into its own tab regardless.
-tab_summary, tab_action, tab_archive, tab_partial, tab_enum, tab_track = st.tabs(
+tab_summary, tab_action, tab_archive, tab_partial, tab_enum, tab_track, tab_review = st.tabs(
     ["🧾 Calls summary", "✅ Active pids", "🗄️ Inactive pids",
-     "💾 Partial saves", "👤 By enumerator", "📋 Tracking sheet"])
+     "💾 Partial saves", "👤 By enumerator", "📋 Tracking sheet",
+     "🛂 Supervisor review"])
 
 # ============================================================================
 # TAB 1 — RESPONDENT SUMMARY (supervisor view: one row per respondent, whole sample)
@@ -654,7 +670,13 @@ with tab_action:
                                         ascending=[True, True])
             else:
                 rows = rows.sort_values("_active_first", ascending=False)
-            rows = rows[[c for c in COLS[key] if c in rows.columns]]
+            # The supervisor's note (Supervisor review: keep trying / sent back)
+            # sits right after the pid, so the enumerator reads it before
+            # dialling. Only shown when some pid in this queue has one.
+            _cols = [c for c in COLS[key] if c in rows.columns]
+            if "supervisor_note" in rows.columns and rows["supervisor_note"].ne("").any():
+                _cols.insert(1, "supervisor_note")
+            rows = rows[_cols]
             st.markdown(f"#### {label} ({len(rows)})")
             if GUIDANCE.get(key):
                 st.caption(GUIDANCE[key])
@@ -927,13 +949,22 @@ with tab_archive:
     if route_col and route_col in summary.columns:
         scols.insert(1, route_col)
     arch = arch.merge(summary[scols], on="pid", how="left")
+    # Supervisor review: validated = confirmed / corrected in the review tab, or
+    # closed by a supervisor in the first place (Data Team Correction form or a
+    # dashboard decision). Everything else closed is still waiting for review.
+    _sup = pd.to_numeric(arch["is_supervisor"], errors="coerce").fillna(0) == 1
+    arch["validated"] = ["✔" if (p in _validated or s) else "pending"
+                         for p, s in zip(arch["pid"], _sup)]
     st.subheader(f"🗄️ Inactive pids ({len(arch)})")
     st.caption("**Inactive pids** — completed interviews (callcode `1`) and closed pids "
                "(callcode starts with `0_`): 0_R refusal · 0_UN ineligible · 0_IN incorrect "
                "respondent · 0_WN wrong number.")
     st.caption("**`ineligible_type1`** = respondent is ineligible — under 18 (`d02_check`), "
                "lives outside the Western Area (`d04_yn`), or had no phone at recruitment. "
-               "**`is_supervisor`** = Yes when a supervisor closed the pid.")
+               "**`is_supervisor`** = Yes when a supervisor closed the pid. "
+               "**`validated`** = ✔ once the supervisor has confirmed or corrected it "
+               "in 🛂 Supervisor review (final: a later call will not reopen it), "
+               "*pending* until then.")
     st.caption("**`was_partialsaved`** here is HISTORY — was this pid ever partial-saved "
                "on the way to being closed. These pids are closed, so nothing is still "
                "held on a tablet; what is still outstanding is on the **💾 Partial "
@@ -944,7 +975,7 @@ with tab_archive:
     if arch.empty:
         st.info("No inactive pids yet.")
     else:
-        base = ["pid", "enumerator", "callcode", "attrition_reason", "ineligible_type1",
+        base = ["pid", "validated", "enumerator", "callcode", "attrition_reason", "ineligible_type1",
                 "is_incorrect", "is_othercontact", "refuse_why", "numbers_wrong",
                 "numbers_tried_of_available", "is_supervisor", "was_partialsaved",
                 "total_attempts", "last_contact_date", "last_comment"]
@@ -952,6 +983,14 @@ with tab_archive:
             base.insert(2, route_col)
         acols = [c for c in base if c in arch.columns]
         st.dataframe(yesno(arch[acols]), width="stretch", hide_index=True)
+
+# ============================================================================
+# TAB 7 — SUPERVISOR REVIEW (validate closures, decide hard cases) — review_tab.py
+# Whole eligible roster, NOT the sidebar-filtered view: see review_tab.py.
+# ============================================================================
+with tab_review:
+    review_tab.render(summary, subs, open_with_buckets(cases_roster, summary),
+                      decisions, decisions_meta)
 
 # ============================================================================
 # FOOTER — what this page is built from
@@ -971,6 +1010,10 @@ with st.expander("🔧 What this page is built from — sources, filters, checks
          "gid": _a["gid"], "rows": _a["rows"], "read at": _a["read"]},
         {"what": "Roster (data entry)", "origin": _s["origin"], "tab": _s["tab"],
          "gid": _s["gid"], "rows": _s["rows"], "read at": _s["read"]},
+        {"what": "Supervisor decisions",
+         "origin": "Google Sheet (service account)" if decisions_meta.get("ok") else "⚠️ not read",
+         "tab": review.TAB, "gid": "", "rows": decisions_meta.get("rows", 0),
+         "read at": decisions_meta.get("msg", "") or "ok"},
     ]), width="stretch", hide_index=True)
     st.caption(f"**Rollup logic {meta['code_stamp']}** — when the calculation code this "
                f"process is running was last edited. Sheet data auto-refreshes every "

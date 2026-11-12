@@ -104,6 +104,55 @@ def check_invariants(s, label, fails):
            "times_noanswer", "times_off", "times_incorrect"]] >= 0).all().all())
 
 
+def check_review_rules(fails):
+    """Supervisor review (review.py): each action has the agreed effect.
+    Built from a tiny hand-made frame, so it runs without any data file."""
+    import warnings
+    warnings.filterwarnings("ignore", message="No runtime found")
+    from review import apply_decisions, clean_log, COLUMNS
+
+    def sub(pid, t, cc, key, **kw):
+        return dict(pid=pid, endtime=f"2026-11-0{t}T10:00:00.000Z", callcode=cc,
+                    KEY=key, enum_name="E", survey_type="Long Survey", **kw)
+    att = pd.DataFrame([
+        sub("A", 1, "2_NA", "a1"), sub("A", 2, "0_WN", "a2"),      # confirm
+        sub("B", 1, "2_SC", "b1", callback_due="2026-11-05 09:00"),
+        sub("B", 2, "0_IN", "b2"),                                  # send back
+        sub("C", 1, "1", "c1"),                                     # wrong complete
+        sub("D", 1, "4_D", "d1"),                                   # close open case
+        sub("E", 1, "2_NA", "e1"), sub("E", 2, "0_R", "e2"),        # unvalidated
+    ])
+    dec = clean_log(pd.DataFrame([dict(zip(COLUMNS, r)) for r in [
+        ("2026-11-03 08:00:00", "S", "A", "validation", "confirmed", "0_WN", "", "a2"),
+        ("2026-11-03 08:01:00", "S", "B", "validation", "sent_back", "", "go on", "b2"),
+        ("2026-11-03 08:02:00", "S", "C", "validation", "corrected", "0_R", "x", "c1"),
+        ("2026-11-03 08:03:00", "S", "D", "decision", "closed", "0_NA", "y", "d1"),
+    ]]))
+    # enumerators keep calling A and E after the review
+    late = pd.DataFrame([sub("A", 4, "2_NA", "a4"), sub("E", 4, "2_NA", "e4")])
+    a1 = apply_decisions(pd.concat([att, late], ignore_index=True), dec)
+    s = summarize(frame_from_attempts(a1), a1).set_index("pid")
+
+    def ok(name, cond):
+        if not bool(cond):
+            fails.append(f"[review rules] {name}")
+    ok("confirmed closure is final (later call ignored, flagged)",
+       s.at["A", "current_callcode"] == "0_WN" and s.at["A", "recontacted_after_close"] == 1)
+    ok("sent back returns to the last open state", s.at["B", "current_callcode"] == "2_SC")
+    ok("sent back keeps the callback time", s.at["B", "callback_due"] == "2026-11-05 09:00")
+    # B's own 2_SC is a contact (a reschedule needs a conversation); the
+    # supervisor's re-open row, which copies that 2_SC, must not add another.
+    ok("a supervisor row is not a contact or an attempt",
+       s.at["B", "total_attempts"] == 2 and s.at["B", "times_pickedup"] == 1)
+    ok("corrected complete -> 0_ code, no longer complete",
+       s.at["C", "current_callcode"] == "0_R" and s.at["C", "is_complete"] == 0)
+    ok("closed decision closes the case", s.at["D", "current_callcode"] == "0_NA")
+    ok("unvalidated closure reopens on a later call", s.at["E", "current_callcode"] == "2_NA")
+    ok("clean_log drops unknown actions",
+       len(clean_log(pd.DataFrame([dict(zip(COLUMNS, ["t", "S", "X", "decision",
+                                                     "bogus", "", "", ""]))]))) == 0)
+
+
 def check_baseline(s, fails):
     got = {"rows": len(s), "completed": int((s["is_complete"] == 1).sum()),
            "ever_attempted": int(s["ever_attempted"].sum()),
@@ -148,6 +197,10 @@ def _live_only(fails):
 
 def main():
     fails = []
+
+    # --- Supervisor review rules (hand-made frame, always runs) ----------------
+    check_review_rules(fails)
+    print("supervisor review rules: checked")
 
     # --- fixture: invariants + baseline + determinism -------------------------
     # The demo fixture is real-data-shaped but synthetic. It is NOT in the git
