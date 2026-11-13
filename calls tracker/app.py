@@ -262,6 +262,33 @@ def skipped_in_order(roster, window=ASSIGN_WINDOW):
     return pd.Series(d.loc[behind, "_front"].values, index=d.loc[behind, "pid"].values)
 
 
+def list_positions(roster):
+    """Where each call list stands, one row per list (one recruitment day's
+    day-4 or day-5 list) that has an `ordering`: `front` = the highest number
+    already tried, `next_up` = the lowest number not yet called (who to hand
+    out next), `left` = how many are still uncalled. Over the WHOLE roster
+    passed in, so a sidebar filter cannot hide what was already tried."""
+    cols = ["date_recruited", "day", "label", "front", "next_up", "left", "_rec"]
+    if roster.empty:
+        return pd.DataFrame(columns=cols)
+    d = with_list_order(roster)
+    d = d[d["_ord"].notna()]
+    if d.empty:
+        return pd.DataFrame(columns=cols)
+    d["_tried"] = d["case_state"].astype(str) != "Not assigned"
+    rows = []
+    for (date, day), g in d.groupby(["date_recruited", "_day"], dropna=False):
+        tried, left = g.loc[g["_tried"], "_ord"], g.loc[~g["_tried"], "_ord"]
+        rec = g["_rec"].iloc[0]
+        when = f"{rec:%d %b}" if pd.notna(rec) else str(date)
+        rows.append({"date_recruited": date, "day": day,
+                     "label": f"{when} · day {int(day)}" if pd.notna(day) else when,
+                     "front": int(tried.max()) if len(tried) else None,
+                     "next_up": int(left.min()) if len(left) else None,
+                     "left": int(len(left)), "_rec": rec})
+    return pd.DataFrame(rows, columns=cols).sort_values(["_rec", "day"])
+
+
 ORANGE_CSS = "color: #f08c00; font-weight: 600"
 
 
@@ -899,6 +926,30 @@ with tab_action:
     if keep_pids is not None:
         new_cases = new_cases[new_cases["pid"].isin(keep_pids)]
     st.markdown(f"#### 🆕 To be assigned ({len(new_cases)})")
+
+    # Headline: where each call list stands, plus what was skipped. Both are
+    # measured over the WHOLE roster (a sidebar filter cannot hide what was
+    # already tried) and shown for the lists in view.
+    _in_view = summary if keep_pids is None else summary[summary["pid"].isin(keep_pids)]
+    _pos = list_positions(summary)
+    _view_lists = set(zip(_in_view["date_recruited"].astype(str),
+                          pd.to_numeric(assigned_day_number(_in_view.get(
+                              "assigned_day", pd.Series("", index=_in_view.index))),
+                              errors="coerce")))
+    _pos = _pos[[(str(d), y) in _view_lists for d, y in zip(_pos["date_recruited"], _pos["day"])]]
+    _front = skipped_in_order(summary)
+    _n_skip = int(new_cases["pid"].isin(_front.index).sum())
+    _tiles = [(_n_skip, "skipped: should already have been tried", RED)]
+    for _, p in _pos.iterrows():
+        _at = f"#{int(p['front'])}" if pd.notna(p["front"]) else "not started"
+        _next = (f"next up: #{int(p['next_up'])} · {int(p['left'])} left"
+                 if pd.notna(p["next_up"]) else "all handed out")
+        _tiles.append((_at, f"{p['label']}: tried up to", BLUE, _next))
+    flag_tiles(_tiles)
+    if _pos.empty:
+        st.caption("No `ordering` on the sheet for these batches yet, so there is no "
+                   "position to show.")
+
     if new_cases.empty:
         st.caption("Nothing to assign.")
     else:
@@ -908,25 +959,16 @@ with tab_action:
         new_cases = (with_list_order(new_cases)
                      .sort_values(["_ord", "_day", "_rec"], na_position="last")
                      .drop(columns=["_rec", "_day", "_ord"]))
-        # Skipped: never called while its list has moved on past it by more
-        # than one round of enumerators. The front is taken over the WHOLE
-        # roster, so the sidebar filters cannot hide what was already tried.
-        _front = skipped_in_order(summary)
         new_cases["skipped"] = [f"⚠ list is at #{int(_front[p])}" if p in _front.index else ""
                                 for p in new_cases["pid"]]
         _red_skip = new_cases["skipped"].ne("")
-        _orange_wait = new_cases["days_waiting"] >= WAIT_DAYS
-        flag_tiles([(int(_red_skip.sum()), "skipped: should already have been tried", RED),
-                    (int(_orange_wait.sum()), f"waiting {WAIT_DAYS}+ days since recruitment",
-                     ORANGE)])
         newcols = [c for c in ["assigned_day", "pid", "ordering", "skipped", "days_waiting",
                                "phone_sample_status", "own_phone", "phones_provided",
                                "rec_signup"]
                    if c in new_cases.columns]
         _show = yesno(new_cases[newcols])
         _show["days_waiting"] = new_cases["days_waiting"].astype("Int64")
-        st.dataframe(style_rows(_show, red=_red_skip, orange=_orange_wait),
-                     width="stretch", hide_index=True)
+        st.dataframe(style_rows(_show, red=_red_skip), width="stretch", hide_index=True)
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
         st.dataframe(subs, width="stretch", hide_index=True)
