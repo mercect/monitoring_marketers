@@ -1,0 +1,347 @@
+<!-- Shown in the dashboard's 📖 Guide tab (app.py). Edit here when the dashboard changes. -->
+<meta charset="utf-8">
+<title>Call-Tracking Monitor Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: a reference manual. Narrow reading column, a contents rail on wide screens,
+   codes and flags drawn exactly as the dashboard draws them. */
+:root {
+  --bg: #f7f8fa;
+  --paper: #ffffff;
+  --fg: #1d232b;
+  --muted: #5b6573;
+  --line: #dde2e8;
+  --accent: #1c7ed6;
+  --code-bg: #eef2f6;
+  --red: #e03131;
+  --orange: #f08c00;
+  --blue: #1c7ed6;
+  --green: #2f9e44;
+  --grey: #868e96;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161b; --paper: #191e25; --fg: #e4e8ed; --muted: #98a2ae;
+    --line: #2b323c; --accent: #4dabf7; --code-bg: #232a33;
+    --red: #ff6b6b; --orange: #ffa94d; --blue: #4dabf7; --green: #51cf66; --grey: #8b939c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161b; --paper: #191e25; --fg: #e4e8ed; --muted: #98a2ae;
+  --line: #2b323c; --accent: #4dabf7; --code-bg: #232a33;
+  --red: #ff6b6b; --orange: #ffa94d; --blue: #4dabf7; --green: #51cf66; --grey: #8b939c;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+}
+.wrap {
+  max-width: 1120px; margin: 0 auto;
+  padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px;
+}
+@media (max-width: 860px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+
+header.top { grid-column: 1 / -1; display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--font-display); font-size: clamp(30px, 5vw, 44px); line-height: 1.1; margin: 0; text-wrap: balance; }
+.lede { max-width: 62ch; color: var(--muted); margin: 0; font-size: 17px; }
+
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); align-self: start; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; border-left: 2px solid var(--line); }
+nav.toc a { display: block; padding: 4px 12px; color: var(--muted); text-decoration: none; font-size: 14px; border-left: 2px solid transparent; margin-left: -2px; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--fg); border-left-color: var(--accent); outline: none; }
+@media (max-width: 860px) {
+  nav.toc { position: static; }
+  nav.toc ol { display: flex; flex-wrap: wrap; gap: 6px; border: 0; }
+  nav.toc a { border: 1px solid var(--line); border-radius: 999px; margin: 0; padding: 4px 12px; background: var(--paper); }
+}
+
+main { min-width: 0; display: grid; gap: 56px; }
+section { display: grid; gap: 16px; scroll-margin-top: 24px; }
+h2 { font-family: var(--font-display); font-size: 26px; line-height: 1.2; margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--line); text-wrap: balance; }
+h3 { font-family: var(--font-display); font-size: 19px; margin: 8px 0 0; }
+p, li { max-width: 68ch; }
+p { margin: 0; }
+ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+strong { font-weight: 600; }
+code, .code { font-family: var(--font-mono); font-size: .88em; background: var(--code-bg); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; display: grid; gap: 12px; min-width: 0; }
+.queue { border-left: 5px solid var(--qc, var(--accent)); }
+.queue h3 { margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 14px; color: var(--muted); }
+
+.tablebox { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+
+/* flag tiles: the same shape the dashboard draws */
+.flags { display: flex; flex-wrap: wrap; gap: 12px; }
+.flag { --c: var(--grey); border: 1px solid var(--c); border-left: 6px solid var(--c); border-radius: 8px; padding: 8px 18px; min-width: 150px;
+  background: color-mix(in srgb, var(--c) 10%, transparent); }
+.flag b { display: block; font-family: var(--font-display); font-size: 28px; line-height: 1.15; color: var(--c); }
+.flag span { font-size: 14px; color: var(--fg); opacity: .85; }
+.flag.red { --c: var(--red); } .flag.orange { --c: var(--orange); } .flag.blue { --c: var(--blue); } .flag.green { --c: var(--green); }
+
+/* shift windows across the field day */
+.shifts { display: grid; grid-template-columns: 2fr 3fr 3fr 2fr 3fr; gap: 4px; min-width: 520px; }
+.shift { background: var(--code-bg); border-radius: 6px; padding: 8px 10px; display: grid; gap: 2px; }
+.shift b { font-family: var(--font-display); font-size: 20px; }
+.shift span { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+
+.redrow td { color: var(--red); font-weight: 600; }
+.note { font-size: 14px; color: var(--muted); }
+.steps { counter-reset: s; list-style: none; padding: 0; display: grid; gap: 10px; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; }
+.steps li::before { content: counter(s); font-family: var(--font-display); font-weight: 700; color: var(--accent); }
+footer { color: var(--muted); font-size: 13px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">Phone survey · field team reference</div>
+    <h1>Call-Tracking Monitor Guide</h1>
+    <p class="lede">The dashboard shows only headings, flags and tables. This guide explains what each part means, how the numbers are counted and what to do with each list.</p>
+  </header>
+
+  <nav class="toc" aria-label="Contents">
+    <ol>
+      <li><a href="#basics">Basics</a></li>
+      <li><a href="#codes">Callcodes</a></li>
+      <li><a href="#summary">Calls summary</a></li>
+      <li><a href="#active">Active pids</a></li>
+      <li><a href="#inactive">Inactive pids</a></li>
+      <li><a href="#partial">Partial saves</a></li>
+      <li><a href="#enumerator">By enumerator</a></li>
+      <li><a href="#tracking">Tracking sheet</a></li>
+      <li><a href="#review">Supervisor review</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section id="basics">
+      <h2>Basics</h2>
+      <ul>
+        <li><strong>Filters.</strong> The dashboard opens on the newest recruitment batch (date and route, in the sidebar). Widen either filter to see earlier batches.</li>
+        <li><strong>Refresh now</strong> re-reads the Google Sheet. Otherwise the data refreshes by itself every 5 minutes.</li>
+        <li><strong>Who is counted.</strong> Only people recruited as <em>Eligible – signed up</em>. Refusals and ineligibles at recruitment cannot be called, so they are left out of every figure.</li>
+        <li><strong>"Now".</strong> Overdue and "due in the next hour" are measured against the latest submission in the data, not the clock. During field hours the two are minutes apart.</li>
+      </ul>
+
+      <h3>Flags</h3>
+      <p>Each list opens with one or two flags: the counts that need attention first. A flag turns grey at 0.</p>
+      <div class="flags" aria-label="Example flags">
+        <div class="flag red"><b>3</b><span>overdue</span></div>
+        <div class="flag orange"><b>1</b><span>due in the next hour</span></div>
+        <div class="flag"><b>0</b><span>no tablet id</span></div>
+      </div>
+      <p><strong>Red rows</strong> in a table are overdue callbacks.</p>
+
+      <h3>Shift windows</h3>
+      <p><code>shifts_to_try</code> lists the windows nobody has called in yet, or says <em>All tried</em> / <em>None tried</em>. Spread calls across windows: someone who never answers in the morning may answer in the evening.</p>
+      <div class="tablebox">
+        <div class="shifts">
+          <div class="shift"><b>A</b><span>07:30–09:30</span></div>
+          <div class="shift"><b>B</b><span>09:30–12:30</span></div>
+          <div class="shift"><b>C</b><span>12:30–15:30</span></div>
+          <div class="shift"><b>D</b><span>15:30–17:30</span></div>
+          <div class="shift"><b>E</b><span>17:30–20:30</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="codes">
+      <h2>Callcodes</h2>
+      <p>The status of a case comes from its callcode.</p>
+      <div class="tablebox"><table>
+        <thead><tr><th>Callcode</th><th>Status</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>1</code></td><td>Inactive</td><td>Completed the interview</td></tr>
+          <tr><td><code>0_…</code></td><td>Inactive</td><td>Closed</td></tr>
+          <tr><td><code>2_…</code></td><td>Open (pending)</td><td>Still to be reached</td></tr>
+          <tr><td><code>3_…</code> <code>4_…</code></td><td>Open (active)</td><td>In progress; <code>4_</code> means a partial save is held on a tablet</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Closing codes</h3>
+      <div class="tablebox"><table>
+        <thead><tr><th>Code</th><th>Meaning</th><th>Used by</th></tr></thead>
+        <tbody>
+          <tr><td><code>0_R</code></td><td>Refusal</td><td>Enumerator</td></tr>
+          <tr><td><code>0_UN</code></td><td>Ineligible: under 18, outside the Western Area, or no phone</td><td>Enumerator</td></tr>
+          <tr><td><code>0_IN</code></td><td>Incorrect respondent: wrong person, numbers exhausted</td><td>Enumerator</td></tr>
+          <tr><td><code>0_WN</code></td><td>Wrong number: numbers exhausted</td><td>Enumerator</td></tr>
+          <tr><td><code>0_OC</code></td><td>Other contact</td><td>Enumerator</td></tr>
+          <tr><td><code>0_NA</code> <code>0_OF</code> <code>0_D</code> <code>0_SC</code></td><td>No answer · phone off · keeps dropping · keeps rescheduling</td><td>Supervisor only</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>What is final</h3>
+      <ul>
+        <li><strong>A completion is final.</strong> Calls logged after it are ignored, and flagged on the Calls summary.</li>
+        <li><strong>A supervisor's closure is final.</strong> A call logged after it does not reopen the case. A completion still beats an earlier closure.</li>
+        <li><strong>An enumerator's closure is not final</strong> until the supervisor validates it. Until then, a new call reopens the case.</li>
+      </ul>
+    </section>
+
+    <section id="summary">
+      <h2>🧾 Calls summary</h2>
+      <div class="tablebox"><table>
+        <thead><tr><th>Tile</th><th>What it counts</th></tr></thead>
+        <tbody>
+          <tr><td>Ever attempted</td><td>Pids dialled at least once</td></tr>
+          <tr><td>Completed — of sample</td><td>Completions out of everyone in the sample</td></tr>
+          <tr><td>Completed — of contacted</td><td>Completions out of the pids who ever picked up</td></tr>
+          <tr><td>Total attempts</td><td>All calls, and the average per attempted pid</td></tr>
+        </tbody>
+      </table></div>
+      <ul>
+        <li><strong>Active pids</strong> shows how many pids sit in each work queue. <em>To be resumed</em> overlaps the others: a <code>4_SC</code> partial save also has a callback time.</li>
+        <li><strong>Inactive pids</strong> shows completed and closed pids by reason.</li>
+        <li><strong>Warnings</strong> appear when a pid was called after it completed, or after a supervisor closed it. The pid stays closed; the warning is there because the call should not have happened. Check how it got back onto someone's list.</li>
+      </ul>
+    </section>
+
+    <section id="active">
+      <h2>✅ Active pids — the work queues</h2>
+      <p>Every open pid sits in one queue. Work through them from the top. If the supervisor has left a note on a pid, it appears as <code>supervisor_note</code> right after the pid: read it before calling.</p>
+
+      <div class="panel queue" style="--qc: var(--red)">
+        <h3>⏰ To be followed up</h3>
+        <div class="meta">Codes <code>2_D</code> <code>2_OC</code> <code>2_SC</code> <code>3_SC</code> <code>4_SC</code></div>
+        <p>A callback time was agreed, or the call dropped and needs chasing. Overdue callbacks are red and sit at the top, then the soonest due. A callback stays here however many times it has been tried, because a time was promised to the respondent. It never moves to <em>To be reviewed</em>.</p>
+        <div class="flags"><div class="flag red"><b>3</b><span>overdue</span></div><div class="flag orange"><b>1</b><span>due in the next hour</span></div></div>
+        <div class="tablebox"><table>
+          <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>callback_due</code></td><td>The agreed time. <em>Not specified, check final comments</em> when the form has none (a drop, or a reschedule logged without a time).</td></tr>
+            <tr><td><code>callback_by</code></td><td>Who calls back: <code>enumerator</code> or <code>respondent</code>. Blank on the form counts as <code>enumerator</code>.</td></tr>
+            <tr><td><code>last_contact_date</code></td><td>The last time someone actually spoke to the respondent.</td></tr>
+            <tr><td><code>last_submission_time</code></td><td>The last form of any kind. A recent submission with an old contact date means the latest calls did not get through.</td></tr>
+            <tr><td><code>comments</code></td><td>The reason given, then the final comment.</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="panel queue" style="--qc: var(--orange)">
+        <h3>📵 To keep calling</h3>
+        <div class="meta">Codes <code>2_IN</code> <code>2_NA</code> <code>2_OF</code> <code>2_WN</code></div>
+        <p>No answer or phone off, or a wrong number or wrong person with other numbers still to try. The list starts with the fewest attempts, then the fewest shift windows tried, then whoever has waited longest.</p>
+        <div class="flags"><div class="flag orange"><b>12</b><span>1 attempt only</span></div></div>
+        <p><code>numbers_wrong</code> is the most numbers any single call found wrong. The form counts per call, not in total, so this never counts the same wrong number twice.</p>
+      </div>
+
+      <div class="panel queue" style="--qc: var(--blue)">
+        <h3>▶️ To be resumed (partial saved)</h3>
+        <div class="meta">Last submission is a <code>4_</code>, plus <code>3_D</code></div>
+        <p>A half-finished interview is held on a tablet. Resume it from <strong>that tablet</strong>; if that is not possible, hand the pid to another enumerator. A blank <code>callback_due</code> is normal on a <code>4_D</code>, <code>4_NA</code> or <code>4_OF</code> hold. A pid leaves this list as soon as anything later is logged against it.</p>
+        <div class="flags"><div class="flag blue"><b>4</b><span>held on a tablet now</span></div><div class="flag red"><b>1</b><span>no tablet id</span></div></div>
+      </div>
+
+      <div class="panel queue" style="--qc: var(--grey)">
+        <h3>🔎 To be reviewed (hard to reach)</h3>
+        <div class="meta">4 or more of the 5 shift windows tried, or more than 8 attempts</div>
+        <p>Open pids worked hard with nothing to show, and still not complete. The supervisor decides whether to keep trying or close them. <code>review_reason</code> says which condition applied. Callbacks never land here.</p>
+        <div class="flags"><div class="flag red"><b>2</b><span>more than 8 attempts</span></div><div class="flag orange"><b>3</b><span>4+ shifts tried</span></div></div>
+      </div>
+
+      <div class="panel queue" style="--qc: var(--green)">
+        <h3>🆕 To be assigned</h3>
+        <p>Eligible sign-ups nobody has called yet. Assign these first, spread across the day.</p>
+      </div>
+    </section>
+
+    <section id="inactive">
+      <h2>🗄️ Inactive pids</h2>
+      <p>Completed interviews and closed pids.</p>
+      <div class="flags"><div class="flag orange"><b>16</b><span>waiting for supervisor validation</span></div></div>
+      <div class="tablebox"><table>
+        <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>validated</code></td><td>✔ once the supervisor has confirmed or corrected the closure (final); <em>pending</em> until then. A supervisor's own closure counts as validated.</td></tr>
+          <tr><td><code>ineligible_type1</code></td><td>Ineligible: under 18, outside the Western Area, or no phone at recruitment.</td></tr>
+          <tr><td><code>is_supervisor</code></td><td>Yes when a supervisor closed the pid.</td></tr>
+          <tr><td><code>was_partialsaved</code></td><td>History: the pid was partial-saved at some point before closing.</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Check regularly that closed pids are off everyone's calling list, so people who should not be contacted are not called again.</p>
+    </section>
+
+    <section id="partial">
+      <h2>💾 Partial saves</h2>
+      <p>A partial save is stored on the tablet it was taken on and can only be resumed from that tablet. This tab shows which tablet holds each one and who to ask.</p>
+      <div class="flags"><div class="flag blue"><b>4</b><span>held now</span></div><div class="flag blue"><b>3</b><span>tablets holding them</span></div><div class="flag red"><b>1</b><span>no tablet id</span></div></div>
+      <ul>
+        <li><strong>What counts:</strong> the pid's last submission is a <code>4_</code> (<code>4_D</code> held partial, <code>4_SC</code> upcoming reschedule, <code>4_NA</code> / <code>4_OF</code> a further attempt on a held case). Only what is still outstanding is listed.</li>
+        <li><strong>No tablet id:</strong> it cannot be traced to a tablet. Start from the enumerator who last submitted.</li>
+        <li><strong>A tablet id that is not a tablet:</strong> a callcode or the pid was typed in the tablet box. Raise it with the enumerator.</li>
+        <li><strong>By tablet:</strong> <code>enumerators</code> are everyone who last submitted on a pid held by that tablet.</li>
+      </ul>
+    </section>
+
+    <section id="enumerator">
+      <h2>👤 By enumerator</h2>
+      <ul>
+        <li><strong>On the plate now:</strong> active pids each enumerator holds (they made the last submission). <em>resume (4_)</em> are partial saves on their tablet; <em>follow-up</em> are <code>3_SC</code> / <code>3_D</code>. The two add up to the total.</li>
+        <li><strong>Callback times:</strong> earliest first. ⚠ means overdue; a time with no date means today.</li>
+        <li><strong>Historic effort:</strong> every call is credited to whoever made it. <em>pids tried</em> overlaps between enumerators, because several people try the same respondent.</li>
+      </ul>
+    </section>
+
+    <section id="tracking">
+      <h2>📋 Tracking sheet</h2>
+      <p>One row per respondent. <em>Current state</em> columns come from the most recent submission; <em>history</em> columns add up all submissions. Respondents nobody has called yet show an empty current state.</p>
+    </section>
+
+    <section id="review">
+      <h2>🛂 Supervisor review</h2>
+      <p>For the supervisor. Everyone can see this tab; only the supervisor can save, with a separate editor password. It covers the whole roster: the sidebar filters do not apply here.</p>
+
+      <h3>Validate closures</h3>
+      <p>Every case an enumerator closed (<code>0_</code>) or completed (<code>1</code>) that has not been reviewed.</p>
+      <div class="tablebox"><table>
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Confirm</strong></td><td>The closure or completion becomes final. A later call does not reopen it; it is flagged instead.</td></tr>
+          <tr><td><strong>Correct</strong></td><td>Changes the code, and is final. A wrong complete is corrected to a <code>0_</code> code.</td></tr>
+          <tr><td><strong>Send back</strong></td><td>The case returns to the queue it came from, and the comment appears to the enumerators as a note.</td></tr>
+        </tbody>
+      </table></div>
+      <p>To clear a backlog, tick several rows and use <strong>Confirm selected</strong>.</p>
+
+      <h3>Decide open cases</h3>
+      <p>The <em>To be resumed</em> and <em>To be reviewed</em> queues.</p>
+      <div class="tablebox"><table>
+        <thead><tr><th>Action</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Close</strong></td><td>Ends the case with a <code>0_</code> code. Final.</td></tr>
+          <tr><td><strong>Keep trying</strong></td><td>Leaves it in its queue; the comment appears to the enumerators as a note.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Reviewing one pid</h3>
+      <ol class="steps">
+        <li>Pick the pid. Its history appears first: attempts, last real call, reschedules, drops, shifts not yet tried, partial saved.</li>
+        <li>Open <strong>All observations</strong> to see every submission. Grey rows are Communications form submissions (timing or status only, never interview answers); blue rows are earlier dashboard entries.</li>
+        <li>Choose the action, the code if needed, write the comment, and save.</li>
+      </ol>
+      <p>Every save adds one row to the <code>decisions</code> tab of the Google Sheet. Nothing is overwritten: changing your mind means a new entry, and the newest one for a pid counts. Do not edit that tab by hand. The <strong>Log</strong> shows every entry, newest first.</p>
+    </section>
+
+    <footer>Counts shown in the flag examples are illustrations, not current figures.</footer>
+  </main>
+</div>

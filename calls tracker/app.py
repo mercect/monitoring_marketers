@@ -19,8 +19,11 @@
 # It moved to the Principal Investigators dashboard — pi_app.py, rendered from
 # indicators.py. This dashboard is the call-tracking / case-management view.
 # -----------------------------------------------------------------------------
+import pathlib
+
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from auth import require_password
 from data_io import (load_all, route_column, newest_batch, parse_dates,
@@ -420,16 +423,17 @@ if keep_pids is not None:
 
 # Tab ORDER is set here; the `with tab_*:` bodies further down can stay in any
 # order, Streamlit renders each into its own tab regardless.
-tab_summary, tab_action, tab_archive, tab_partial, tab_enum, tab_track, tab_review = st.tabs(
+(tab_summary, tab_action, tab_archive, tab_partial, tab_enum, tab_track,
+ tab_review, tab_guide) = st.tabs(
     ["🧾 Calls summary", "✅ Active pids", "🗄️ Inactive pids",
      "💾 Partial saves", "👤 By enumerator", "📋 Tracking sheet",
-     "🛂 Supervisor review"])
+     "🛂 Supervisor review", "📖 Guide"])
 
 # ============================================================================
 # TAB 1 — RESPONDENT SUMMARY (supervisor view: one row per respondent, whole sample)
 # ============================================================================
 with tab_summary:
-    # What each tab is for, and every explanation, lives in USER_GUIDE.md.
+    # What each tab is for, and every explanation, lives in guide.html (the 📖 Guide tab).
     sk = summary_kpis(summary_view)
     resp = sk["respondents"] or 1
     ea_pct = round(100 * sk["ever_attempted"] / resp)
@@ -577,7 +581,7 @@ with tab_action:
 
         st.subheader("Work queues — open pids")
         # One line of key for the shift letters; every other explanation of the
-        # queues (codes, rules, columns) lives in USER_GUIDE.md.
+        # queues (codes, rules, columns) lives in guide.html (the 📖 Guide tab).
         st.caption("Shifts: A 07:30–09:30 · B 09:30–12:30 · C 12:30–15:30 · "
                    "D 15:30–17:30 · E 17:30–20:30")
 
@@ -674,7 +678,7 @@ with tab_action:
             _red = (rows["overdue"].eq("Yes") if key == "Callback" and "overdue" in rows.columns
                     else None)
             # Each queue: heading, a flag or two for what needs attention, the
-            # table. Explanations live in USER_GUIDE.md. Counted BEFORE the
+            # table. Explanations live in guide.html (the 📖 Guide tab). Counted BEFORE the
             # columns are trimmed, since some flags read columns not shown.
             _flags = queue_flags(key, rows, _red)
             rows = rows[_cols]
@@ -917,6 +921,18 @@ with tab_archive:
 with tab_review:
     review_tab.render(summary, subs, open_with_buckets(cases_roster, summary),
                       decisions, decisions_meta)
+
+# ============================================================================
+# TAB 8 — GUIDE (how to read every tab, queue, flag and code) — guide.html
+# Shown in its own frame so its styles cannot leak into the dashboard. The
+# frame scrolls on its own, and the contents links jump within it.
+# ============================================================================
+with tab_guide:
+    _guide = pathlib.Path(__file__).with_name("guide.html")
+    if _guide.exists():
+        components.html(_guide.read_text(encoding="utf-8"), height=1100, scrolling=True)
+    else:
+        st.info("The guide file (guide.html) is missing next to app.py.")
 
 # ============================================================================
 # FOOTER — what this page is built from
