@@ -11,8 +11,9 @@
 #   - assigned but not called within LATE_MINUTES
 #   - called without being assigned (only after assignments started)
 #   - first called by someone other than the enumerator it was assigned to
-# Assigning out of order (a lower ordering in the same call list still waiting)
-# is allowed, but needs a written reason, which goes into the log.
+# Every assignment can carry a comment. Assigning out of order (a lower
+# ordering in the same call list still waiting) is allowed, but then the
+# comment is required, as the reason. It goes into the log (sup_comment).
 # -----------------------------------------------------------------------------
 from datetime import datetime, timezone
 
@@ -172,13 +173,16 @@ def assign_panel(table, roster, handed, names, assigners):
     who = st.selectbox("Assigned by", assigners, index=None, key="assign_by",
                        placeholder="Who is assigning (goes into the log)") or ""
     gaps = out_of_order(list(picked["pid"]), roster, handed)
-    reason = ""
     if gaps:
         st.warning("⚠️ Out of order: " + " · ".join(
             f"**{p}** while {', '.join(g[:3])}{' …' if len(g) > 3 else ''} still waiting"
             for p, g in gaps.items()))
-        reason = st.text_area("Reason for assigning out of order (required)",
-                              key="assign_reason")
+    # Always there: an optional note on the assignment, REQUIRED (and labelled
+    # so) when it is out of order. Saved with every ticked pid.
+    reason = st.text_area(
+        "Reason for assigning out of order (required)" if gaps else "Comment (optional)",
+        key="assign_reason",
+        placeholder="Why these pids are handed out now, or anything worth recording")
     missing = picked["assign_to"].fillna("").astype(str).str.strip().eq("")
     ready = (not problem and who.strip() and not missing.any()
              and (not gaps or reason.strip()))
@@ -189,7 +193,7 @@ def assign_panel(table, roster, handed, names, assigners):
     if st.button(f"📨 Assign {len(picked)} pid(s)", disabled=not ready, type="primary"):
         rows = [{"sup_time": rv.now_text(), "sup_by": who.strip(), "pid": r["pid"],
                  "sup_type": "assignment", "sup_action": "assigned",
-                 "sup_comment": reason.strip() if r["pid"] in gaps else "",
+                 "sup_comment": reason.strip(),
                  "assigned_to": r["assign_to"]} for _, r in picked.iterrows()]
         try:
             rv.append_decisions(rows)
