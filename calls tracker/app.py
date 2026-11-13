@@ -30,7 +30,8 @@ from data_io import (load_all, route_column, newest_batch, parse_dates,
                      REFRESH_SECONDS, code_stamp, EXPECTED_SAMPLE_TAB)
 from rollup import (OPEN_STATUSES, effort_by_enumerator, summary_kpis,
                     eligible_roster, recruit_exclusions,
-                    CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME)
+                    CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME,
+                    is_attempt_row, is_contact_row, _to_dt)
 import review
 import review_tab
 
@@ -145,6 +146,59 @@ def queue_flags(key, rows, red=None):
                 (int((num("shifts_covered_n") >= SHIFTS_MOST).sum()),
                  f"{SHIFTS_MOST}+ shifts tried", ORANGE)]
     return []
+
+
+# A never-called pid recruited this many days ago or more is flagged: people go
+# cold fast, and "17 never called" alone does not say whether they signed up
+# yesterday or last week.
+WAIT_DAYS = 3
+
+
+def data_now(summary):
+    """The dashboard's "now": the latest submission in the data, the same
+    reference rollup() uses for overdue callbacks."""
+    return pd.to_datetime(summary["last_submission_time"], errors="coerce").max()
+
+
+def days_waiting(frame, now):
+    """Whole days since each pid was recruited (blank date -> NaN)."""
+    if "date_recruited" not in frame.columns or pd.isna(now):
+        return pd.Series(float("nan"), index=frame.index)
+    rec = parse_dates(frame["date_recruited"])
+    rec.index = frame.index
+    return (now.normalize() - rec.dt.normalize()).dt.days
+
+
+def todays_pace(subs, day):
+    """Calls made, respondents reached and interviews completed on `day`, in
+    total and per enumerator. Calls = attempts (supervisor rows are paperwork);
+    reached = calls where the respondent was on the line; completed = pids
+    whose interview finished that day."""
+    cols = ["enumerator", "calls", "reached", "completed"]
+    if subs.empty or pd.isna(day) or "pid" not in subs.columns:
+        return {"calls": 0, "reached": 0, "completed": 0}, pd.DataFrame(columns=cols)
+    t = _to_dt(subs["endtime"] if "endtime" in subs.columns else pd.Series("", index=subs.index))
+    if "starttime" in subs.columns:
+        t = t.fillna(_to_dt(subs["starttime"]))
+    d = subs.loc[t.dt.date == day.date()].copy()
+    if d.empty:
+        return {"calls": 0, "reached": 0, "completed": 0}, pd.DataFrame(columns=cols)
+    d["_call"] = is_attempt_row(d)
+    d["_reached"] = is_contact_row(d) & d["_call"]
+    d["_done"] = d["callcode"].astype(str).str.strip().eq("1") if "callcode" in d.columns else False
+    d["enumerator"] = (d["enum_name"].astype(str).str.strip()
+                       if "enum_name" in d.columns else "")
+    calls = d[d["_call"]]
+    per = (calls.groupby("enumerator")
+                .agg(calls=("pid", "size"), reached=("_reached", "sum"))
+                .reset_index())
+    done_by = calls[calls["_done"]].groupby("enumerator")["pid"].nunique()
+    per["completed"] = per["enumerator"].map(done_by).fillna(0).astype(int)
+    per["reached"] = per["reached"].astype(int)
+    per = per[per["enumerator"] != ""].sort_values("calls", ascending=False)
+    totals = {"calls": int(len(calls)), "reached": int(calls["_reached"].sum()),
+              "completed": int(calls.loc[calls["_done"], "pid"].nunique())}
+    return totals, per[cols]
 
 
 NO_CALLBACK_TIME = "Not specified, check final comments"
@@ -475,6 +529,12 @@ with tab_summary:
     n_next_hour = (int(_cb["callback_when"].astype(str).eq("within 1h").sum())
                    if len(_cb) and "callback_when" in _cb.columns else 0)
     n_other_cb = max(n_followup - n_overdue - n_next_hour, 0)
+    # never-called pids split by how long they have waited since recruitment
+    _now = data_now(summary)
+    _unassigned = summary_view[(summary_view["case_state"] == "Not assigned")
+                               & (summary_view["eligible_to_call"] == 1)]
+    n_wait_old = int((days_waiting(_unassigned, _now) >= WAIT_DAYS).sum())
+    n_wait_new = max(n_assign - n_wait_old, 0)
 
     # ---- 1. DO NOW: the queues in priority order -------------------------------
     st.subheader(f"🎯 Do now — {actionable} open pids ({pct}% of {total})")
@@ -482,7 +542,9 @@ with tab_summary:
              (n_next_hour, "callbacks due in the next hour", ORANGE, "⏰ To be followed up"),
              (n_other_cb, "other callbacks", BLUE, "⏰ To be followed up"),
              (n_resume_shown, "partial saves to resume", BLUE, "▶️ To be resumed"),
-             (n_assign, "never called", BLUE, "🆕 To be assigned"),
+             (n_wait_old, f"never called, waiting {WAIT_DAYS}+ days", RED,
+              "assign first · 🆕 To be assigned"),
+             (n_wait_new, "never called, recruited recently", BLUE, "🆕 To be assigned"),
              (n_keep, "to keep calling", BLUE, "📵 To keep calling"),
              (n_review, "hard to reach", ORANGE, "supervisor · 🔎 To be reviewed")]
     if SHOW_WHATSAPP:
@@ -528,7 +590,20 @@ with tab_summary:
                                       "last_submission_time"] if c in _ac.columns]],
                      width="stretch", hide_index=True)
 
-    # ---- 3. PROGRESS: how far through the sample --------------------------------
+    # ---- 3. TODAY: the pace of the day -----------------------------------------
+    # "Today" is the day of the latest submission (the dashboard's "now"), named
+    # in the heading so a morning view of yesterday's work is never mislabelled.
+    _subs_view = subs[subs["pid"].isin(keep_pids)] if keep_pids is not None else subs
+    _pace, _per = todays_pace(_subs_view, _now)
+    st.divider()
+    st.subheader(f"📞 Today — {_now:%d %b}" if pd.notna(_now) else "📞 Today")
+    flag_tiles([(_pace["calls"], "calls made", BLUE),
+                (_pace["reached"], "respondents reached", BLUE),
+                (_pace["completed"], "interviews completed", GREEN)])
+    if len(_per):
+        st.dataframe(_per, width="stretch", hide_index=True)
+
+    # ---- 4. PROGRESS: how far through the sample --------------------------------
     st.divider()
     st.subheader("📈 Progress")
     flag_tiles([
@@ -728,13 +803,24 @@ with tab_action:
     if new_cases.empty:
         st.caption("Nothing to assign.")
     else:
+        # Longest waiting first: someone recruited a week ago goes cold sooner
+        # than someone recruited yesterday.
+        new_cases["days_waiting"] = days_waiting(new_cases, data_now(summary))
+        new_cases = new_cases.sort_values("days_waiting", ascending=False,
+                                          na_position="last")
+        flag_tiles([(int((new_cases["days_waiting"] >= WAIT_DAYS).sum()),
+                     f"waiting {WAIT_DAYS}+ days since recruitment", RED)])
         # Both roster vintages listed: the 2026-08 data-entry names first,
         # then the earlier ones. Only the columns actually on the sheet show.
-        newcols = [c for c in ["pid", "route_recruited", "date_recruited",
+        newcols = [c for c in ["pid", "days_waiting", "route_recruited", "date_recruited",
                                "number_of_phone_numbers", "phone_sample_status",
                                "own_phone", "phones_provided", "rec_signup"]
                    if c in new_cases.columns]
-        st.dataframe(yesno(new_cases[newcols]), width="stretch", hide_index=True)
+        _red_wait = new_cases["days_waiting"] >= WAIT_DAYS
+        _show = yesno(new_cases[newcols])
+        _show["days_waiting"] = new_cases["days_waiting"].astype("Int64")
+        st.dataframe(style_overdue(_show, mask=_red_wait), width="stretch",
+                     hide_index=True)
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
         st.dataframe(subs, width="stretch", hide_index=True)

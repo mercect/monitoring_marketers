@@ -209,13 +209,15 @@ footer { color: var(--muted); font-size: 13px; }
         <div class="flag orange"><b>1</b><span>callbacks due in the next hour</span></div>
         <div class="flag blue"><b>4</b><span>other callbacks</span></div>
         <div class="flag blue"><b>4</b><span>partial saves to resume</span></div>
-        <div class="flag blue"><b>17</b><span>never called</span></div>
+        <div class="flag red"><b>2</b><span>never called, waiting 3+ days</span></div>
+        <div class="flag blue"><b>15</b><span>never called, recruited recently</span></div>
         <div class="flag blue"><b>12</b><span>to keep calling</span></div>
         <div class="flag orange"><b>2</b><span>hard to reach</span></div>
       </div>
       <ul>
         <li><strong>Overdue, next hour, other callbacks</strong> together make up ⏰ To be followed up.</li>
         <li><strong>Partial saves to resume</strong> overlaps the callbacks: a <code>4_SC</code> partial save also has a callback time.</li>
+        <li><strong>Never called, waiting 3+ days</strong>: recruited 3 or more days ago and still not called. Assign these before the recent ones; people go cold fast.</li>
         <li><strong>Hard to reach</strong> is for the supervisor to decide on.</li>
       </ul>
 
@@ -230,6 +232,18 @@ footer { color: var(--muted); font-size: 13px; }
           <tr><td>Closures waiting for validation</td><td>For the supervisor, in 🛂 Supervisor review.</td></tr>
         </tbody>
       </table></div>
+
+      <h3>📞 Today</h3>
+      <p>The pace of the day, with the date in the heading. "Today" is the day of the latest submission, so in the morning, before anyone has called, it still shows the previous day under that day's date.</p>
+      <div class="tablebox"><table>
+        <thead><tr><th>Tile</th><th>What it counts</th></tr></thead>
+        <tbody>
+          <tr><td>Calls made</td><td>Every call logged that day (supervisor entries do not count)</td></tr>
+          <tr><td>Respondents reached</td><td>Calls where the respondent was on the line</td></tr>
+          <tr><td>Interviews completed</td><td>Interviews finished that day</td></tr>
+        </tbody>
+      </table></div>
+      <p>Below the tiles, the same three numbers per enumerator, most calls first.</p>
 
       <h3>📈 Progress</h3>
       <div class="tablebox"><table>
@@ -290,7 +304,8 @@ footer { color: var(--muted); font-size: 13px; }
 
       <div class="panel queue" style="--qc: var(--green)">
         <h3>🆕 To be assigned</h3>
-        <p>Eligible sign-ups nobody has called yet. Assign these first, spread across the day.</p>
+        <p>Eligible sign-ups nobody has called yet. Assign these first, spread across the day. The longest waiting are at the top; anyone recruited 3 or more days ago is red. <code>days_waiting</code> counts the days since recruitment.</p>
+        <div class="flags"><div class="flag red"><b>2</b><span>waiting 3+ days since recruitment</span></div></div>
       </div>
     </section>
 
