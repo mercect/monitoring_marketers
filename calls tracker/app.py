@@ -297,7 +297,7 @@ def open_with_buckets(cases, summary):
                     "times_rescheduled", "times_dropped",
                     "times_noanswer", "times_off",
                     "last_section", "tab_id", "last_comment", "last_submission_time",
-                    "assigned_day", "ordering", "date_recruited"]
+                    "assigned_day", "ordering", "date_recruited", "batch_code"]
                    if c in summary.columns]]
     oc = oc.merge(eff, on="pid", how="left")
     oc["shifts_tried"] = (oc["shifts_covered_n"].fillna(0).astype(int).astype(str) + "/5")
@@ -790,9 +790,11 @@ with tab_action:
             # The supervisor's note (Supervisor review: keep trying / sent back)
             # sits right after the pid, so the enumerator reads it before
             # dialling. Only shown when some pid in this queue has one.
-            _cols = [c for c in COLS[key] if c in rows.columns]
+            # batch_code always leads, in front of the pid, in every queue.
+            _cols = ([c for c in ["batch_code"] if c in rows.columns]
+                     + [c for c in COLS[key] if c in rows.columns and c != "batch_code"])
             if "supervisor_note" in rows.columns and rows["supervisor_note"].ne("").any():
-                _cols.insert(1, "supervisor_note")
+                _cols.insert(_cols.index("pid") + 1, "supervisor_note")
             # Which rows to paint red, read BEFORE trimming the columns: the
             # follow-up queue no longer shows its overdue flag, only the colour.
             _red = (rows["overdue"].eq("Yes") if key == "Callback" and "overdue" in rows.columns
@@ -820,7 +822,7 @@ with tab_action:
             if wa.empty:
                 st.caption("Nothing here right now.")
             else:
-                wa_cols = ["pid", "enumerator", "status", "callcode", "action_bucket",
+                wa_cols = ["batch_code", "pid", "enumerator", "status", "callcode", "action_bucket",
                            "total_attempts", "shifts_to_try", "numbers_tried_of_available",
                            "last_comment"]
                 st.dataframe(yesno(wa[[c for c in wa_cols if c in wa.columns]]),
@@ -851,7 +853,7 @@ with tab_action:
                      f"waiting {WAIT_DAYS}+ days since recruitment", RED)])
         # Both roster vintages listed: the 2026-08 data-entry names first,
         # then the earlier ones. Only the columns actually on the sheet show.
-        newcols = [c for c in ["pid", "assigned_day", "ordering", "days_waiting", "route_recruited", "date_recruited",
+        newcols = [c for c in ["batch_code", "pid", "assigned_day", "ordering", "days_waiting", "route_recruited", "date_recruited",
                                "number_of_phone_numbers", "phone_sample_status",
                                "own_phone", "phones_provided", "rec_signup"]
                    if c in new_cases.columns]
