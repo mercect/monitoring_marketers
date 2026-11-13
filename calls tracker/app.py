@@ -597,8 +597,10 @@ with tab_action:
                         "enumerator). `comments` = the reason given (rsd_reason) — "
                         "then the final comment.",
             "Keep calling": "Keep dialing (no-answer / phone-off), or try the other numbers "
-                            "on file (wrong number / incorrect respondent). Watch shifts "
-                            "tried and total attempts.",
+                            "on file (wrong number / incorrect respondent). **Fewest "
+                            "attempts first.** `numbers_wrong` = the most numbers any "
+                            "single call found wrong (the form counts per call, not in "
+                            "total).",
             "Resume": "A half-finished interview is still sitting on someone's tablet. Keep "
                       "trying to resume it from **that device**; if you can't, hand the pid "
                       "to another enumerator. **Overlaps the other queues** — a `4_SC` held "
@@ -666,13 +668,15 @@ with tab_action:
             # last_contact_date are dropped - every pid here is open by
             # definition, and neither date changes what to dial next.
             # numbers_wrong is the survey's own count of this respondent's
-            # numbers that turned out WRONG. Not times_wrongnumber, which counts
+            # numbers that turned out WRONG - per call on the form, so the
+            # summary keeps the highest any call recorded. Not times_wrongnumber, which counts
             # ATTEMPTS that ended on a wrong-number code: a number can be known
             # bad without another attempt being spent on it, so that one reads 0
             # while a number really is wrong.
             "Keep calling": ["pid", "enumerator", "callcode", "total_attempts",
-                             "shifts_to_try", "numbers_tried_of_available",
-                             "numbers_wrong", "last_comment"],
+                             "last_submission_time", "shifts_to_try",
+                             "numbers_tried_of_available", "numbers_wrong",
+                             "last_comment"],
             # last_section is the readable label, not last_section_n. tab_id comes
             # from tab_id or rs_tab_id, whichever the submission carried.
             # callback_when / callback_due belong here as much as on the Callback
@@ -711,9 +715,13 @@ with tab_action:
                                         na_position="last").drop(columns="_cb_dt")
                 rows = followup_view(rows)
             elif key == "Keep calling":
-                # least-worked first: fewest shift windows tried, then fewest attempts
-                rows = rows.sort_values(["shifts_covered_n", "total_attempts"],
-                                        ascending=[True, True])
+                # least-worked first: fewest attempts, then fewest shift windows
+                # tried, then the one left longest (oldest last submission)
+                rows["_last"] = pd.to_datetime(rows.get("last_submission_time"),
+                                               errors="coerce")
+                rows = rows.sort_values(["total_attempts", "shifts_covered_n", "_last"],
+                                        ascending=[True, True, True],
+                                        na_position="first").drop(columns="_last")
             else:
                 rows = rows.sort_values("_active_first", ascending=False)
             # The supervisor's note (Supervisor review: keep trying / sent back)
