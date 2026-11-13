@@ -314,10 +314,9 @@ footer { color: var(--muted); font-size: 13px; }
       <div class="panel queue" style="--qc: var(--green)">
         <h3>🆕 To be assigned</h3>
         <p>Eligible sign-ups nobody has called yet. Hand them out <strong>strictly by <code>ordering</code></strong>: the top row is always the next pid to give out. Never skip ahead (a 5 before a 3), and never repeat a case while new ones are waiting. <code>days_waiting</code> counts the days since recruitment.</p>
-        <div class="flags"><div class="flag red"><b>1</b><span>skipped: should already have been tried</span></div><div class="flag blue"><b>#28</b><span>06 Nov · day 4: tried up to</span></div><div class="flag blue"><b>#12</b><span>06 Nov · day 5: tried up to</span></div></div>
+        <div class="flags"><div class="flag red"><b>1</b><span>skipped: should already have been tried</span></div></div>
         <ul>
           <li><strong>Skipped (red rows):</strong> each call list (one recruitment day's day-4 or day-5 list) has a front, the highest <code>ordering</code> already tried. A pid more than 8 places behind it (one round of 8 enumerators) was passed over. Example: the team is on #20–28 and #8 has never been called. The <code>skipped</code> column says how far the list has got. Hand these out first.</li>
-          <li><strong>Position (one tile per call list):</strong> the highest number tried so far in each list, with <em>next up</em> (the lowest number not yet called, who to hand out next) and how many are left. Watch these closely in the first days: the front should move forward steadily, one round at a time.</li>
         </ul>
         <h3>Assigning in the dashboard</h3>
         <ol class="steps">
