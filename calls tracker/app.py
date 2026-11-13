@@ -70,7 +70,7 @@ def yesno(df):
 OVERDUE_CSS = "color: #e03131; font-weight: 600"
 
 
-def style_overdue(df, when_col="callback_when"):
+def style_overdue(df, when_col="callback_when", mask=None):
     """Red, bold text on every row whose callback is overdue.
 
     Returns a Styler (st.dataframe renders one directly), or the frame untouched
@@ -78,10 +78,15 @@ def style_overdue(df, when_col="callback_when"):
     an empty one. Written with axis=None so the mask is applied by LABEL: the
     callback queue is sorted before it gets here, so a positional lookup would
     colour the wrong rows."""
-    if when_col not in df.columns or df.empty:
+    if df.empty:
         return df
-    # "overdue" from callback_when, or "Yes" from the follow-up queue's overdue column
-    overdue = df[when_col].astype(str).str.strip().str.lower().isin(["overdue", "yes"])
+    if mask is not None:
+        # explicit rows to paint (the follow-up queue, which shows no overdue column)
+        overdue = mask.reindex(df.index, fill_value=False).astype(bool)
+    elif when_col in df.columns:
+        overdue = df[when_col].astype(str).str.strip().str.lower().eq("overdue")
+    else:
+        return df
     if not overdue.any():
         return df
     styles = pd.DataFrame("", index=df.index, columns=df.columns)
@@ -160,7 +165,7 @@ def open_with_buckets(cases, summary):
                     "numbers_tried_of_available", "numbers_wrong",
                     "times_rescheduled", "times_dropped",
                     "times_noanswer", "times_off",
-                    "last_section", "tab_id", "last_comment"]
+                    "last_section", "tab_id", "last_comment", "last_submission_time"]
                    if c in summary.columns]]
     oc = oc.merge(eff, on="pid", how="left")
     oc["shifts_tried"] = (oc["shifts_covered_n"].fillna(0).astype(int).astype(str) + "/5")
@@ -650,9 +655,11 @@ with tab_action:
             # display columns overdue / comments are built in the loop below
             # (followup_view): blanks in callback_due / callback_by are filled
             # in, and rsd_reason + last_comment are merged into one column.
-            "Callback":     ["pid", "callcode", "overdue", "callback_due",
+            # No overdue column: an overdue row is simply red (style_overdue).
+            "Callback":     ["pid", "callcode", "callback_due",
                              "callback_by", "shifts_to_try", "active_partialsave",
-                             "total_attempts", "last_contact_date", "comments"],
+                             "total_attempts", "last_contact_date",
+                             "last_submission_time", "comments"],
             # Trimmed to what an enumerator needs to pick up the phone: who,
             # what happened last, how hard it has been tried, which numbers are
             # left, and whether any of them is a dud. status / days_open /
@@ -715,6 +722,10 @@ with tab_action:
             _cols = [c for c in COLS[key] if c in rows.columns]
             if "supervisor_note" in rows.columns and rows["supervisor_note"].ne("").any():
                 _cols.insert(1, "supervisor_note")
+            # Which rows to paint red, read BEFORE trimming the columns: the
+            # follow-up queue no longer shows its overdue flag, only the colour.
+            _red = (rows["overdue"].eq("Yes") if key == "Callback" and "overdue" in rows.columns
+                    else None)
             rows = rows[_cols]
             st.markdown(f"#### {label} ({len(rows)})")
             if GUIDANCE.get(key):
@@ -726,8 +737,7 @@ with tab_action:
             else:
                 # style_overdue no-ops on a queue with no callback_when column,
                 # so this is safe for all four and marks it wherever it is shown.
-                st.dataframe(style_overdue(yesno(rows),
-                                           "overdue" if key == "Callback" else "callback_when"),
+                st.dataframe(style_overdue(yesno(rows), mask=_red),
                              width="stretch", hide_index=True)
                 st.caption(SHIFT_LEGEND)
 
