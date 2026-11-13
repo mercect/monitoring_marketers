@@ -32,7 +32,9 @@ from rollup import (OPEN_STATUSES, effort_by_enumerator, summary_kpis,
                     eligible_roster, recruit_exclusions,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME,
                     is_attempt_row, is_contact_row, _to_dt)
+import assign
 import enumerators
+from calllist import assigned_day_number, with_list_order
 import review
 import review_tab
 
@@ -202,49 +204,13 @@ def todays_pace(subs, day):
     return totals, per[cols]
 
 
-def assigned_day_number(s):
-    """The call-list day (4 or 5) from `assigned_day`, whichever way the sheet
-    writes it: a plain "4" / "5", "Day 4", or a batch-stamped "03Nov-D4". The
-    number AFTER the D is the day; taking the first number instead read
-    "03Nov-D4" as day 3 and merged that batch's two lists. Blank when there is
-    no recognisable day. Used for SORTING only: the tables show assigned_day
-    exactly as the sheet writes it."""
-    s = pd.Series(s).fillna("").astype(str).str.strip()
-    after_d = s.str.extract(r"(?i)(?:d|day)\s*(\d+)\s*$")[0]
-    plain = s.str.extract(r"^(\d+)$")[0]
-    return after_d.fillna(plain).fillna("")
-
-
-def with_list_order(df):
-    """df plus the keys that put pids in CALL-LIST ORDER, from two columns on
-    the data_entry tab: `assigned_day` (4 or 5, which call list the pid is on)
-    and `ordering` (its position in that list; the numbering restarts for each
-    assigned day). Adds _rec (recruitment date), _day and _ord, so sorting on
-    (_rec, _day, _ord) gives each recruitment day's day-4 list, then its day-5
-    list, each in order. Guarantees both columns exist to show, blank until the
-    sheet has them."""
-    out = df.copy()
-    for c in ("assigned_day", "ordering"):
-        if c not in out.columns:
-            out[c] = ""
-    out["_day"] = pd.to_numeric(assigned_day_number(out["assigned_day"]), errors="coerce")
-    out["_ord"] = pd.to_numeric(out["ordering"], errors="coerce")
-    if "date_recruited" in out.columns:
-        rec = parse_dates(out["date_recruited"])
-        rec.index = out.index
-        out["_rec"] = rec
-    else:
-        out["_rec"] = pd.NaT
-    return out
-
-
 # Enumerators working at once = how many pids are handed out together. Those
 # are tried at about the same time, so within one round the order can blur;
 # a pid more than this many places behind the front of its list was skipped.
 ASSIGN_WINDOW = 8
 
 
-def skipped_in_order(roster, window=ASSIGN_WINDOW):
+def skipped_in_order(roster, window=ASSIGN_WINDOW, handed=()):
     """pid -> the front of its call list, for never-called pids left behind.
 
     A call list is one recruitment day's day-4 or day-5 list. Its FRONT is the
@@ -255,7 +221,8 @@ def skipped_in_order(roster, window=ASSIGN_WINDOW):
     if roster.empty:
         return pd.Series(dtype=float)
     d = with_list_order(roster)
-    tried = d["case_state"].astype(str) != "Not assigned"
+    # tried = called at all, or assigned in the dashboard (assign.py)
+    tried = (d["case_state"].astype(str) != "Not assigned") | d["pid"].isin(set(handed))
     lst = d["date_recruited"].astype(str) + "|" + d["_day"].astype(str)
     front = d.loc[tried & d["_ord"].notna()].groupby(lst[tried & d["_ord"].notna()])["_ord"].max()
     d["_front"] = lst.map(front)
@@ -263,7 +230,7 @@ def skipped_in_order(roster, window=ASSIGN_WINDOW):
     return pd.Series(d.loc[behind, "_front"].values, index=d.loc[behind, "pid"].values)
 
 
-def list_positions(roster):
+def list_positions(roster, handed=()):
     """Where each call list stands, one row per list (one recruitment day's
     day-4 or day-5 list) that has an `ordering`: `front` = the highest number
     already tried, `next_up` = the lowest number not yet called (who to hand
@@ -276,7 +243,8 @@ def list_positions(roster):
     d = d[d["_ord"].notna()]
     if d.empty:
         return pd.DataFrame(columns=cols)
-    d["_tried"] = d["case_state"].astype(str) != "Not assigned"
+    d["_tried"] = ((d["case_state"].astype(str) != "Not assigned")
+                  | d["pid"].isin(set(handed)))
     rows = []
     for (date, day), g in d.groupby(["date_recruited", "_day"], dropna=False):
         tried, left = g.loc[g["_tried"], "_ord"], g.loc[~g["_tried"], "_ord"]
@@ -507,6 +475,14 @@ subs = subs[subs["pid"].isin(_roster_pids)].copy() if "pid" in subs.columns else
 _notes = review.notes_by_pid(decisions)
 cases["supervisor_note"] = cases["pid"].map(_notes).fillna("")
 _validated = review.validated_pids(decisions)
+# First assignments made in the dashboard (assign.py): who has been handed out,
+# and the dropdown of enumerators to hand out to.
+_asg = assign.assignments(decisions)
+_handed = set(_asg["pid"])
+_enum_names = (list(enum_roster["name"]) if len(enum_roster) else
+               sorted({n for n in subs.get("enum_name", pd.Series(dtype=str)).astype(str).str.strip()
+                       if n} - {review.editor_name()}))
+_asg_checks = assign.checks(summary, subs, _asg)
 cases_roster = cases
 
 
@@ -679,9 +655,15 @@ with tab_summary:
         (summary_view["current_status"].astype(str).str.upper() == "INACTIVE")
         & (_sup != 1) & ~summary_view["pid"].isin(_validated)]
     # never-called pids the call list has moved past (see skipped_in_order)
-    _skipped = skipped_in_order(summary)
+    _skipped = skipped_in_order(summary, handed=_handed)
     n_skipped = int(summary_view["pid"].isin(_skipped.index).sum())
     _fix = [(n_skipped, "skipped in call-list order", RED, "assign now · 🆕 To be assigned"),
+            (len(_asg_checks["late"]), f"assigned, not called within {assign.LATE_MINUTES} min",
+             RED, "📨 Assigned, not called yet"),
+            (len(_asg_checks["unassigned"]), "called without being assigned", ORANGE,
+             "table below"),
+            (len(_asg_checks["other"]), "called by someone other than assigned", ORANGE,
+             "table below"),
             (len(_rc), "called again after completing", RED, "table below"),
             (len(_ac), "called after a supervisor closed them", RED, "table below"),
             (len(_no_tab), "partial saves with no tablet id", RED, "💾 Partial saves"),
@@ -705,6 +687,21 @@ with tab_summary:
                                       "current_callcode", "calls_after_close",
                                       "last_submission_time"] if c in _ac.columns]],
                      width="stretch", hide_index=True)
+
+    _un = _asg_checks["unassigned"]
+    if len(_un):
+        st.markdown(f"**Called without being assigned ({len(_un)})**")
+        _u = _un.assign(first_call_at=pd.to_datetime(_un["first_call_at"]).dt.strftime("%d %b %H:%M"))
+        st.dataframe(_u.rename(columns={"first_caller": "called_by"}), width="stretch",
+                     hide_index=True)
+    _ot = _asg_checks["other"]
+    if len(_ot):
+        st.markdown(f"**Called by someone other than assigned ({len(_ot)})**")
+        _o = _ot.assign(first_call_at=pd.to_datetime(_ot["first_call_at"]).dt.strftime("%d %b %H:%M"),
+                        assigned_at=pd.to_datetime(_ot["assigned_at"]).dt.strftime("%d %b %H:%M"))
+        st.dataframe(_o[["pid", "assigned_to", "first_caller", "assigned_at", "first_call_at"]]
+                     .rename(columns={"first_caller": "called_by"}), width="stretch",
+                     hide_index=True)
 
     # ---- 3. TODAY: the pace of the day -----------------------------------------
     # "Today" is the day of the latest submission (the dashboard's "now"), named
@@ -929,19 +926,21 @@ with tab_action:
                         & (summary["eligible_to_call"] == 1)].copy()
     if keep_pids is not None:
         new_cases = new_cases[new_cases["pid"].isin(keep_pids)]
+    # Assigned in the dashboard = handed out: it waits in the list below instead.
+    new_cases = new_cases[~new_cases["pid"].isin(_handed)]
     st.markdown(f"#### 🆕 To be assigned ({len(new_cases)})")
 
     # Headline: where each call list stands, plus what was skipped. Both are
     # measured over the WHOLE roster (a sidebar filter cannot hide what was
     # already tried) and shown for the lists in view.
     _in_view = summary if keep_pids is None else summary[summary["pid"].isin(keep_pids)]
-    _pos = list_positions(summary)
+    _pos = list_positions(summary, handed=_handed)
     _view_lists = set(zip(_in_view["date_recruited"].astype(str),
                           pd.to_numeric(assigned_day_number(_in_view.get(
                               "assigned_day", pd.Series("", index=_in_view.index))),
                               errors="coerce")))
     _pos = _pos[[(str(d), y) in _view_lists for d, y in zip(_pos["date_recruited"], _pos["day"])]]
-    _front = skipped_in_order(summary)
+    _front = skipped_in_order(summary, handed=_handed)
     _n_skip = int(new_cases["pid"].isin(_front.index).sum())
     _tiles = [(_n_skip, "skipped: should already have been tried", RED)]
     for _, p in _pos.iterrows():
@@ -972,7 +971,29 @@ with tab_action:
                    if c in new_cases.columns]
         _show = yesno(new_cases[newcols])
         _show["days_waiting"] = new_cases["days_waiting"].astype("Int64")
-        st.dataframe(style_rows(_show, red=_red_skip), width="stretch", hide_index=True)
+        # Tick, choose the enumerator, Assign: recorded in the decisions log.
+        assign.assign_panel(_show, summary, _handed, _enum_names)
+
+    # ---- assigned in the dashboard, not called yet ---------------------------
+    _wait = _asg_checks.get("waiting", pd.DataFrame())
+    if len(_wait) and keep_pids is not None:
+        _wait = _wait[_wait["pid"].isin(keep_pids)]
+    st.markdown(f"#### 📨 Assigned, not called yet ({len(_wait)})")
+    if _wait.empty:
+        st.caption("Nothing waiting.")
+    else:
+        _late = _wait["minutes"] > assign.LATE_MINUTES
+        flag_tiles([(int(_late.sum()), f"not called within {assign.LATE_MINUTES} min", RED)])
+        _w = _wait.merge(summary[[c for c in ["pid", "assigned_day", "ordering"]
+                                  if c in summary.columns]], on="pid", how="left")
+        _w["assigned_at"] = pd.to_datetime(_w["assigned_at"]).dt.strftime("%d %b %H:%M")
+        _w["minutes_waiting"] = _w["minutes"].astype("Int64")
+        _w = _w.sort_values("minutes_waiting", ascending=False)
+        _wcols = [c for c in ["assigned_day", "pid", "ordering", "assigned_to",
+                              "assigned_at", "minutes_waiting", "assigned_by", "reason"]
+                  if c in _w.columns]
+        st.dataframe(style_rows(_w[_wcols], red=_w["minutes_waiting"] > assign.LATE_MINUTES),
+                     width="stretch", hide_index=True)
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
         st.dataframe(subs, width="stretch", hide_index=True)

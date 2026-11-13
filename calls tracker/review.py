@@ -38,11 +38,15 @@ import streamlit as st
 from rollup import status_for, _to_dt
 
 TAB = "decisions"
+# assigned_to was added for first assignments (assign.py). Older logs have no
+# such column: the header is extended on the next save, and reading pads it.
 COLUMNS = ["sup_time", "sup_by", "pid", "sup_type", "sup_action",
-           "sup_callcode", "sup_comment", "sup_ref_key"]
+           "sup_callcode", "sup_comment", "sup_ref_key", "assigned_to"]
 
 TYPES = {"validation": {"confirmed", "corrected", "sent_back"},
-         "decision": {"closed", "keep_trying"}}
+         "decision": {"closed", "keep_trying"},
+         # a pid handed out for its first call (assign.py); changes no status
+         "assignment": {"assigned"}}
 FINAL_VALIDATION = {"confirmed", "corrected"}
 NOTE_ACTIONS = {"sent_back", "keep_trying"}
 
@@ -162,7 +166,12 @@ def load_decisions():
                              "msg": f"could not read the `{TAB}` tab: {e}"}
     if not values:
         return empty_log(), {"ok": True, "rows": 0, "msg": ""}
-    head, body = values[0], values[1:]
+    # Rows can be wider than the header (a log written before assigned_to
+    # existed, then extended): pad everything to the widest row.
+    width = max(len(r) for r in values)
+    head = [str(h).strip() or f"_col{i}" for i, h in
+            enumerate(values[0] + [""] * (width - len(values[0])))]
+    body = [r + [""] * (width - len(r)) for r in values[1:]]
     df = pd.DataFrame(body, columns=head) if body else pd.DataFrame(columns=head)
     for c in COLUMNS:
         if c not in df.columns:
@@ -198,6 +207,13 @@ def append_decisions(rows):
         if not str(r.get("pid", "")).strip():
             raise ValueError("a decision without a pid")
     ws = _worksheet(create=True)
+    # An older log lacks the newer columns: widen the grid (it was created
+    # exactly as wide as the old header) and extend the header first.
+    if ws.col_count < len(COLUMNS):
+        ws.add_cols(len(COLUMNS) - ws.col_count)
+    head = ws.row_values(1)
+    if head[:len(COLUMNS)] != COLUMNS:
+        ws.update(values=[COLUMNS], range_name="A1")
     ws.append_rows([[str(r.get(c, "")) for c in COLUMNS] for r in rows],
                    value_input_option="RAW")
 

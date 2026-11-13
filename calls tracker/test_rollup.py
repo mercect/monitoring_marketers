@@ -174,6 +174,43 @@ def check_enumerator_names(fails):
         fails.append("[enumerator names] unknown names should be just 'Someone Else'")
 
 
+def check_assignments(fails):
+    """assign.py: first assignment per pid; late / unassigned / other-caller
+    checks; out-of-order detection within one call list."""
+    import warnings
+    warnings.filterwarnings("ignore", message="No runtime found")
+    import assign
+    from review import COLUMNS
+
+    def row(t, pid, to, reason=""):
+        return dict(zip(COLUMNS, [t, "Sup", pid, "assignment", "assigned", "", reason, "", to]))
+    dec = pd.DataFrame([row("2026-11-14 08:00:00", "A", "Enum 1"),
+                        row("2026-11-14 08:00:00", "B", "Enum 2"),
+                        row("2026-11-14 08:00:00", "C", "Enum 3"),
+                        row("2026-11-14 09:00:00", "A", "Enum 9")])   # a later one is ignored
+    asg = assign.assignments(dec)
+    ok = lambda name, cond: None if cond else fails.append(f"[assignments] {name}")
+    ok("first assignment kept", asg.set_index("pid").at["A", "assigned_to"] == "Enum 1")
+    subs = pd.DataFrame({
+        "pid": ["A", "C", "D", "E"],
+        "endtime": ["2026-11-14T08:10:00.000Z", "2026-11-14T08:12:00.000Z",
+                    "2026-11-14T08:20:00.000Z", "2026-11-14T07:00:00.000Z"],
+        "enum_name": ["Enum 1", "Enum 7", "Enum 4", "Enum 5"]})
+    roster = pd.DataFrame({"pid": list("ABCDE")})
+    c = assign.checks(roster, subs, asg, now=pd.Timestamp("2026-11-14 08:45"))
+    ok("B late (assigned 45 min ago, never called)", list(c["late"]["pid"]) == ["B"])
+    ok("C called by someone else", list(c["other"]["pid"]) == ["C"])
+    ok("D called without assignment, E (before go-live) not",
+       list(c["unassigned"]["pid"]) == ["D"])
+    # out of order: list 06/11 day 4, #1 waiting, ticking #3 skips it; #2 is assigned
+    r = pd.DataFrame({"pid": ["p1", "p2", "p3"], "date_recruited": "06/11/2026",
+                      "assigned_day": "4", "ordering": ["1", "2", "3"],
+                      "case_state": "Not assigned"})
+    gaps = assign.out_of_order(["p3"], r, {"p2"})
+    ok("ticking #3 while #1 waits is out of order", list(gaps) == ["p3"] and "p1" in gaps["p3"][0])
+    ok("ticking #1 is in order", assign.out_of_order(["p1"], r, {"p2"}) == {})
+
+
 def check_baseline(s, fails):
     got = {"rows": len(s), "completed": int((s["is_complete"] == 1).sum()),
            "ever_attempted": int(s["ever_attempted"].sum()),
@@ -222,7 +259,8 @@ def main():
     # --- Supervisor review rules (hand-made frame, always runs) ----------------
     check_review_rules(fails)
     check_enumerator_names(fails)
-    print("supervisor review rules + enumerator names: checked")
+    check_assignments(fails)
+    print("supervisor review rules + enumerator names + assignments: checked")
 
     # --- fixture: invariants + baseline + determinism -------------------------
     # The demo fixture is real-data-shaped but synthetic. It is NOT in the git
