@@ -5,8 +5,9 @@
 # "Issa Adsms") and is counted as several people. The `enumerators` tab of the
 # Google Sheet lists each enumerator once, with the other spellings they use:
 #
-#     name                  | also_typed_as
-#     Issa Adams Kamara     | Issa Adams; Issa Adsms
+#     name                  | also_typed_as           | supervisor
+#     Issa Adams Kamara     | Issa Adams; Issa Adsms  |
+#     Kadie Nabay           |                         | 1
 #
 # Every submission's enum_name is replaced by the official `name` before the
 # rollup, so every tab counts each person once. Capitals, extra spaces, dots
@@ -24,6 +25,15 @@ import pandas as pd
 import streamlit as st
 
 TAB = "enumerators"
+
+
+def supervisors(roster):
+    """Names marked as supervisors (supervisor = 1 / yes / true): the people
+    who may record an assignment ("Assigned by" in assign.py)."""
+    if roster is None or roster.empty or "supervisor" not in roster.columns:
+        return []
+    mark = roster["supervisor"].astype(str).str.strip().str.lower()
+    return [n for n, m in zip(roster["name"], mark) if m in {"1", "1.0", "yes", "y", "true", "x"}]
 
 
 def norm(name):
@@ -86,7 +96,7 @@ def unknown_names(subs, amap, ignore=()):
 def load_enumerators():
     """(roster, meta). Never raises: without the tab or the service account the
     dashboard carries on with the names exactly as typed."""
-    cols = ["name", "also_typed_as"]
+    cols = ["name", "also_typed_as", "supervisor"]
     values, msg = None, ""
     try:
         import review

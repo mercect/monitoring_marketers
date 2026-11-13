@@ -972,7 +972,8 @@ with tab_action:
         _show = yesno(new_cases[newcols])
         _show["days_waiting"] = new_cases["days_waiting"].astype("Int64")
         # Tick, choose the enumerator, Assign: recorded in the decisions log.
-        assign.assign_panel(_show, summary, _handed, _enum_names)
+        assign.assign_panel(_show, summary, _handed, _enum_names,
+                            enumerators.supervisors(enum_roster))
 
     # ---- assigned in the dashboard, not called yet ---------------------------
     _wait = _asg_checks.get("waiting", pd.DataFrame())

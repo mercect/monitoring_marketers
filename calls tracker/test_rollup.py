@@ -170,6 +170,10 @@ def check_enumerator_names(fails):
     want = ["Issa Adams Kamara"] * 4 + ["Mohammed Tunis", "Someone Else", "Supervisor"]
     if got != want:
         fails.append(f"[enumerator names] merged to {got}")
+    from enumerators import supervisors
+    sup = pd.DataFrame({"name": ["A", "B", "C", "D"], "supervisor": ["1", "", "yes", "0"]})
+    if supervisors(sup) != ["A", "C"]:
+        fails.append(f"[enumerator names] supervisors read as {supervisors(sup)}")
     if unknown_names(apply_names(subs, amap), amap) != {"Someone Else": 1}:
         fails.append("[enumerator names] unknown names should be just 'Someone Else'")
 

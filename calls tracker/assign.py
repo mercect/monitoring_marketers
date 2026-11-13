@@ -25,6 +25,7 @@ from calllist import with_list_order
 LATE_MINUTES = 30          # assigned, and no call within this many minutes
 
 
+
 def utc_now():
     """Real current time in UTC = Sierra Leone time, tz-naive, like the data."""
     return pd.Timestamp(datetime.now(timezone.utc).replace(tzinfo=None))
@@ -121,7 +122,7 @@ def _fmt(t):
 
 
 @st.fragment
-def assign_panel(table, roster, handed, names):
+def assign_panel(table, roster, handed, names, assigners):
     """The tick-and-assign table. A FRAGMENT: ticking and picking re-run only
     this panel, not the whole dashboard. Saving re-runs everything.
 
@@ -147,13 +148,29 @@ def assign_panel(table, roster, handed, names):
             "assign_to": st.column_config.SelectboxColumn("assign to", options=names,
                                                           width="medium"),
         })
-    picked = edited[edited["assign"]]
+    picked = edited[edited["assign"]].copy()
     if picked.empty:
-        st.caption("Tick the pids you are handing out and choose the enumerator.")
+        st.caption("Tick the pids you are handing out.")
         return
 
-    who = st.text_input("Your name", key="assign_by",
-                        placeholder="Who is assigning (goes into the log)")
+    # A plain, visible dropdown for the ticked pids. The in-table "assign to"
+    # cell only opens on a double-click, which is easy to miss; a name chosen
+    # there still wins, for handing different pids to different people at once.
+    own = picked["assign_to"].fillna("").astype(str).str.strip()
+    left = int(own.eq("").sum())
+    if left:
+        to_all = st.selectbox(
+            f"Assign to ({left} ticked pid{'s' if left > 1 else ''} without a name in the table)",
+            names, index=None, placeholder="Choose the enumerator", key="assign_to_all")
+        if to_all:
+            picked.loc[own.eq(""), "assign_to"] = to_all
+
+    # The people marked supervisor = 1 on the enumerators tab.
+    if not assigners:
+        st.info("Nobody is marked as a supervisor on the `enumerators` tab "
+                "(`supervisor` = 1), so there is no one to pick under Assigned by.")
+    who = st.selectbox("Assigned by", assigners, index=None, key="assign_by",
+                       placeholder="Who is assigning (goes into the log)") or ""
     gaps = out_of_order(list(picked["pid"]), roster, handed)
     reason = ""
     if gaps:
@@ -181,6 +198,7 @@ def assign_panel(table, roster, handed, names):
             return
         st.session_state["assign_round"] += 1          # a fresh, unticked table
         st.session_state.pop("assign_reason", None)
+        st.session_state.pop("assign_to_all", None)
         st.session_state["assign_flash"] = f"✅ Assigned {len(rows)} pid(s)."
         st.cache_data.clear()
         st.rerun()
