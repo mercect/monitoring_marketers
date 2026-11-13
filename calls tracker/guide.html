@@ -229,6 +229,7 @@ footer { color: var(--muted); font-size: 13px; }
       <div class="tablebox"><table>
         <thead><tr><th>Flag</th><th>What to do</th></tr></thead>
         <tbody>
+          <tr><td>Skipped in call-list order</td><td>Never-called pids the list has moved past. Hand them out now (🆕 To be assigned, red rows).</td></tr>
           <tr><td>Called again after completing</td><td>The interview was already done. Find out how the pid got back onto someone's list. The table below the flags lists them.</td></tr>
           <tr><td>Called after a supervisor closed them</td><td>A closure usually means "do not call again". Same check.</td></tr>
           <tr><td>Partial saves with no tablet id</td><td>Nobody knows which tablet holds the interview. Ask the enumerator who last submitted (💾 Partial saves).</td></tr>
@@ -309,8 +310,12 @@ footer { color: var(--muted); font-size: 13px; }
 
       <div class="panel queue" style="--qc: var(--green)">
         <h3>🆕 To be assigned</h3>
-        <p>Eligible sign-ups nobody has called yet. Assign these first, spread across the day, <strong>strictly in call-list order</strong>: the list is sorted by recruitment day, then <code>assigned_day</code> (day 4 before day 5), then <code>ordering</code>, so the top row is always the next pid to hand out. Never skip ahead (a 5 before a 3), and never repeat a case while new ones are waiting. Anyone recruited 3 or more days ago is red; <code>days_waiting</code> counts the days since recruitment.</p>
-        <div class="flags"><div class="flag red"><b>2</b><span>waiting 3+ days since recruitment</span></div></div>
+        <p>Eligible sign-ups nobody has called yet. Hand them out <strong>strictly by <code>ordering</code></strong>: the top row is always the next pid to give out. Never skip ahead (a 5 before a 3), and never repeat a case while new ones are waiting. <code>days_waiting</code> counts the days since recruitment.</p>
+        <div class="flags"><div class="flag red"><b>1</b><span>skipped: should already have been tried</span></div><div class="flag orange"><b>2</b><span>waiting 3+ days since recruitment</span></div></div>
+        <ul>
+          <li><strong>Skipped (red rows):</strong> each call list (one recruitment day's day-4 or day-5 list) has a front, the highest <code>ordering</code> already tried. A pid more than 8 places behind it (one round of 8 enumerators) was passed over. Example: the team is on #20–28 and #8 has never been called. The <code>skipped</code> column says how far the list has got. Hand these out first.</li>
+          <li><strong>Waiting 3+ days (orange rows):</strong> recruited 3 or more days ago and still not called.</li>
+        </ul>
       </div>
     </section>
 

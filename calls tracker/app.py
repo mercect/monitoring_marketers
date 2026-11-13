@@ -237,6 +237,50 @@ def with_list_order(df):
     return out
 
 
+# Enumerators working at once = how many pids are handed out together. Those
+# are tried at about the same time, so within one round the order can blur;
+# a pid more than this many places behind the front of its list was skipped.
+ASSIGN_WINDOW = 8
+
+
+def skipped_in_order(roster, window=ASSIGN_WINDOW):
+    """pid -> the front of its call list, for never-called pids left behind.
+
+    A call list is one recruitment day's day-4 or day-5 list. Its FRONT is the
+    highest `ordering` already tried (any submission at all). A never-called
+    pid whose ordering is more than `window` places behind that front should
+    already have been handed out: with 8 enumerators trying #20-28, #8 is
+    skipped. Pids without an ordering are never flagged."""
+    if roster.empty:
+        return pd.Series(dtype=float)
+    d = with_list_order(roster)
+    tried = d["case_state"].astype(str) != "Not assigned"
+    lst = d["date_recruited"].astype(str) + "|" + d["_day"].astype(str)
+    front = d.loc[tried & d["_ord"].notna()].groupby(lst[tried & d["_ord"].notna()])["_ord"].max()
+    d["_front"] = lst.map(front)
+    behind = (~tried) & d["_ord"].notna() & d["_front"].notna() & (d["_ord"] < d["_front"] - window)
+    return pd.Series(d.loc[behind, "_front"].values, index=d.loc[behind, "pid"].values)
+
+
+ORANGE_CSS = "color: #f08c00; font-weight: 600"
+
+
+def style_rows(df, red=None, orange=None):
+    """Red rows for `red`, orange for `orange` (red wins where both apply)."""
+    if df.empty:
+        return df
+    red = (red.reindex(df.index, fill_value=False).astype(bool) if red is not None
+           else pd.Series(False, index=df.index))
+    orange = (orange.reindex(df.index, fill_value=False).astype(bool) if orange is not None
+              else pd.Series(False, index=df.index)) & ~red
+    if not (red.any() or orange.any()):
+        return df
+    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+    styles.loc[orange, :] = ORANGE_CSS
+    styles.loc[red, :] = OVERDUE_CSS
+    return df.style.apply(lambda _: styles, axis=None)
+
+
 NO_CALLBACK_TIME = "Not specified, check final comments"
 
 
@@ -603,7 +647,11 @@ with tab_summary:
     _closed = summary_view[
         (summary_view["current_status"].astype(str).str.upper() == "INACTIVE")
         & (_sup != 1) & ~summary_view["pid"].isin(_validated)]
-    _fix = [(len(_rc), "called again after completing", RED, "table below"),
+    # never-called pids the call list has moved past (see skipped_in_order)
+    _skipped = skipped_in_order(summary)
+    n_skipped = int(summary_view["pid"].isin(_skipped.index).sum())
+    _fix = [(n_skipped, "skipped in call-list order", RED, "assign now · 🆕 To be assigned"),
+            (len(_rc), "called again after completing", RED, "table below"),
             (len(_ac), "called after a supervisor closed them", RED, "table below"),
             (len(_no_tab), "partial saves with no tablet id", RED, "💾 Partial saves"),
             (len(_closed), "closures waiting for validation", ORANGE,
@@ -854,27 +902,31 @@ with tab_action:
     if new_cases.empty:
         st.caption("Nothing to assign.")
     else:
-        # CALL-LIST ORDER: first attempts go strictly in list order, so the top
-        # row is always the next pid to hand out. Oldest recruitment day first
-        # (the longest waiting), then its day-4 list before its day-5 list, each
-        # in `ordering`.
+        # CALL-LIST ORDER: first attempts go strictly by `ordering`, so the top
+        # row is always the next pid to hand out (blank orderings last).
         new_cases["days_waiting"] = days_waiting(new_cases, data_now(summary))
         new_cases = (with_list_order(new_cases)
-                     .sort_values(["_rec", "_day", "_ord"], na_position="last")
+                     .sort_values(["_ord", "_day", "_rec"], na_position="last")
                      .drop(columns=["_rec", "_day", "_ord"]))
-        flag_tiles([(int((new_cases["days_waiting"] >= WAIT_DAYS).sum()),
-                     f"waiting {WAIT_DAYS}+ days since recruitment", RED)])
-        # Both roster vintages listed: the 2026-08 data-entry names first,
-        # then the earlier ones. Only the columns actually on the sheet show.
-        newcols = [c for c in ["assigned_day", "pid", "ordering", "days_waiting", "route_recruited", "date_recruited",
-                               "number_of_phone_numbers", "phone_sample_status",
-                               "own_phone", "phones_provided", "rec_signup"]
+        # Skipped: never called while its list has moved on past it by more
+        # than one round of enumerators. The front is taken over the WHOLE
+        # roster, so the sidebar filters cannot hide what was already tried.
+        _front = skipped_in_order(summary)
+        new_cases["skipped"] = [f"⚠ list is at #{int(_front[p])}" if p in _front.index else ""
+                                for p in new_cases["pid"]]
+        _red_skip = new_cases["skipped"].ne("")
+        _orange_wait = new_cases["days_waiting"] >= WAIT_DAYS
+        flag_tiles([(int(_red_skip.sum()), "skipped: should already have been tried", RED),
+                    (int(_orange_wait.sum()), f"waiting {WAIT_DAYS}+ days since recruitment",
+                     ORANGE)])
+        newcols = [c for c in ["assigned_day", "pid", "ordering", "skipped", "days_waiting",
+                               "phone_sample_status", "own_phone", "phones_provided",
+                               "rec_signup"]
                    if c in new_cases.columns]
-        _red_wait = new_cases["days_waiting"] >= WAIT_DAYS
         _show = yesno(new_cases[newcols])
         _show["days_waiting"] = new_cases["days_waiting"].astype("Int64")
-        st.dataframe(style_overdue(_show, mask=_red_wait), width="stretch",
-                     hide_index=True)
+        st.dataframe(style_rows(_show, red=_red_skip, orange=_orange_wait),
+                     width="stretch", hide_index=True)
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
         st.dataframe(subs, width="stretch", hide_index=True)
