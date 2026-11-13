@@ -206,7 +206,8 @@ def assigned_day_number(s):
     writes it: a plain "4" / "5", "Day 4", or a batch-stamped "03Nov-D4". The
     number AFTER the D is the day; taking the first number instead read
     "03Nov-D4" as day 3 and merged that batch's two lists. Blank when there is
-    no recognisable day."""
+    no recognisable day. Used for SORTING only: the tables show assigned_day
+    exactly as the sheet writes it."""
     s = pd.Series(s).fillna("").astype(str).str.strip()
     after_d = s.str.extract(r"(?i)(?:d|day)\s*(\d+)\s*$")[0]
     plain = s.str.extract(r"^(\d+)$")[0]
@@ -423,11 +424,6 @@ _roster_pids = set(summary["pid"])
 n_offroster_cases = int((~cases["pid"].isin(_roster_pids)).sum())
 cases = cases[cases["pid"].isin(_roster_pids)].copy()
 subs = subs[subs["pid"].isin(_roster_pids)].copy() if "pid" in subs.columns else subs
-
-# One way of writing the call-list day everywhere: the sheet has both "4" / "5"
-# and batch-stamped "03Nov-D4" / "03Nov-D5". Shown as the plain day number.
-if "assigned_day" in summary.columns:
-    summary["assigned_day"] = assigned_day_number(summary["assigned_day"]).values
 
 # Supervisor review: the note for the enumerators (keep trying / sent back) rides
 # on every case row so each queue can show it, and a validated flag for the
