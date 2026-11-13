@@ -200,20 +200,49 @@ footer { color: var(--muted); font-size: 13px; }
 
     <section id="summary">
       <h2>🧾 Calls summary</h2>
+      <p>The first page reads in the order you work: what to do now, what went wrong, then how far along the survey is.</p>
+
+      <h3>🎯 Do now</h3>
+      <p>The open pids, split by what to do with them. <strong>Left to right is the priority order.</strong> Each tile says which list in ✅ Active pids to open.</p>
+      <div class="flags">
+        <div class="flag red"><b>3</b><span>overdue callbacks</span></div>
+        <div class="flag orange"><b>1</b><span>callbacks due in the next hour</span></div>
+        <div class="flag blue"><b>4</b><span>other callbacks</span></div>
+        <div class="flag blue"><b>4</b><span>partial saves to resume</span></div>
+        <div class="flag blue"><b>17</b><span>never called</span></div>
+        <div class="flag blue"><b>12</b><span>to keep calling</span></div>
+        <div class="flag orange"><b>2</b><span>hard to reach</span></div>
+      </div>
+      <ul>
+        <li><strong>Overdue, next hour, other callbacks</strong> together make up ⏰ To be followed up.</li>
+        <li><strong>Partial saves to resume</strong> overlaps the callbacks: a <code>4_SC</code> partial save also has a callback time.</li>
+        <li><strong>Hard to reach</strong> is for the supervisor to decide on.</li>
+      </ul>
+
+      <h3>⚠️ To fix</h3>
+      <p>Only shown when something went wrong; otherwise the page says <em>Nothing to fix</em>.</p>
+      <div class="tablebox"><table>
+        <thead><tr><th>Flag</th><th>What to do</th></tr></thead>
+        <tbody>
+          <tr><td>Called again after completing</td><td>The interview was already done. Find out how the pid got back onto someone's list. The table below the flags lists them.</td></tr>
+          <tr><td>Called after a supervisor closed them</td><td>A closure usually means "do not call again". Same check.</td></tr>
+          <tr><td>Partial saves with no tablet id</td><td>Nobody knows which tablet holds the interview. Ask the enumerator who last submitted (💾 Partial saves).</td></tr>
+          <tr><td>Closures waiting for validation</td><td>For the supervisor, in 🛂 Supervisor review.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>📈 Progress</h3>
       <div class="tablebox"><table>
         <thead><tr><th>Tile</th><th>What it counts</th></tr></thead>
         <tbody>
-          <tr><td>Ever attempted</td><td>Pids dialled at least once</td></tr>
-          <tr><td>Completed — of sample</td><td>Completions out of everyone in the sample</td></tr>
-          <tr><td>Completed — of contacted</td><td>Completions out of the pids who ever picked up</td></tr>
+          <tr><td>Respondents in the sample</td><td>Everyone signed up in the selected batch</td></tr>
+          <tr><td>Ever attempted</td><td>Pids dialled at least once, and how many not yet</td></tr>
+          <tr><td>Completed of sample</td><td>Completions out of everyone in the sample</td></tr>
+          <tr><td>Completed of contacted</td><td>Completions out of the pids who ever picked up</td></tr>
           <tr><td>Total attempts</td><td>All calls, and the average per attempted pid</td></tr>
+          <tr><td>Finished</td><td>Completed and closed pids, by reason</td></tr>
         </tbody>
       </table></div>
-      <ul>
-        <li><strong>Active pids</strong> shows how many pids sit in each work queue. <em>To be resumed</em> overlaps the others: a <code>4_SC</code> partial save also has a callback time.</li>
-        <li><strong>Inactive pids</strong> shows completed and closed pids by reason.</li>
-        <li><strong>Warnings</strong> appear when a pid was called after it completed, or after a supervisor closed it. The pid stays closed; the warning is there because the call should not have happened. Check how it got back onto someone's list.</li>
-      </ul>
     </section>
 
     <section id="active">

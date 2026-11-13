@@ -102,17 +102,22 @@ BLUE, GREEN = "#1c7ed6", "#2f9e44"
 
 
 def flag_tiles(items):
-    """A row of big count tiles: [(count, label, colour), ...]. A tile with a
-    count of 0 turns grey, so only what needs attention stands out. Plain HTML
-    with a translucent fill, so it reads in both the light and dark theme."""
+    """A row of big count tiles: [(count, label, colour), ...], or with a 4th
+    item, a small "where to go" line under the label. A tile with a count of 0
+    turns grey, so only what needs attention stands out. Plain HTML with a
+    translucent fill, so it reads in both the light and dark theme."""
     tiles = []
-    for n, label, colour in items:
+    for item in items:
+        n, label, colour = item[:3]
+        hint = item[3] if len(item) > 3 else ""
         c = colour if n else GREY
         tiles.append(
             f'<div style="border:1px solid {c};border-left:6px solid {c};'
             f'border-radius:8px;padding:8px 18px;min-width:170px;background:{c}1A">'
             f'<div style="font-size:1.9rem;font-weight:700;line-height:1.15;color:{c}">{n}</div>'
-            f'<div style="font-size:0.95rem;opacity:.85">{label}</div></div>')
+            f'<div style="font-size:0.95rem;opacity:.85">{label}</div>'
+            + (f'<div style="font-size:0.78rem;opacity:.6;margin-top:2px">{hint}</div>'
+               if hint else "") + '</div>')
     st.markdown('<div style="display:flex;gap:12px;flex-wrap:wrap;margin:2px 0 12px">'
                 + "".join(tiles) + "</div>", unsafe_allow_html=True)
 
@@ -433,54 +438,28 @@ if keep_pids is not None:
 # TAB 1 — RESPONDENT SUMMARY (supervisor view: one row per respondent, whole sample)
 # ============================================================================
 with tab_summary:
-    # What each tab is for, and every explanation, lives in guide.html (the 📖 Guide tab).
+    # Reads top to bottom in the order an enumerator works: what to do now (by
+    # priority), what has gone wrong, then how far along we are. Explanations
+    # live in guide.html (the 📖 Guide tab).
     sk = summary_kpis(summary_view)
     resp = sk["respondents"] or 1
     ea_pct = round(100 * sk["ever_attempted"] / resp)
     total_att = int(pd.to_numeric(summary_view["total_attempts"], errors="coerce").fillna(0).sum())
     avg_att = round(total_att / sk["ever_attempted"], 1) if sk["ever_attempted"] else 0
-    # "contacted" = ever picked up. The Contact rate tile is removed for now, but
-    # this count still denominates the second completion tile below.
+    # "contacted" = ever picked up; it denominates the second completion tile.
     n_picked = int((summary_view["ever_picked_up"] == 1).sum())
-    # TWO completion rates, shown as separate tiles because they answer different
-    # questions: how far through the sample we are, vs. how well the interview
-    # converts once someone actually answers the phone. Safe as a percentage —
-    # completing requires answering, so every completed pid is also a contacted
-    # one and the second rate cannot exceed 100%.
+    # TWO completion rates: how far through the sample we are, vs. how well the
+    # interview converts once someone answers. Completing requires answering, so
+    # the second cannot exceed 100%.
     done_of_contacted = round(100 * sk["completed"] / n_picked) if n_picked else 0
 
-    # top indicators: title (bold) / description (metric label) / number (metric value)
-    def _ind(col, title, desc, value, green=False):
-        with col:
-            st.markdown(f"<div style='margin-bottom:-0.8rem'><strong>{title}</strong></div>",
-                        unsafe_allow_html=True)
-            st.metric(desc, f":green[{value}]" if green else value)
-
-    st.subheader("Indicators at a glance")
-    m = st.columns(5)
-    _ind(m[0], "Respondents", "in the sample", f"{sk['respondents']}")
-    _ind(m[1], "Ever attempted", f"{sk['never_attempted']} not yet assigned",
-         f"{ea_pct}%  ({sk['ever_attempted']})")
-    _ind(m[2], "Completed — of sample",
-         f"of all {sk['respondents']} respondents",
-         f"{sk['completion_rate']}%  ({sk['completed']})", green=True)
-    _ind(m[3], "Completed — of contacted",
-         f"of the {n_picked} who picked up",
-         f"{done_of_contacted}%  ({sk['completed']})", green=True)
-    # Names its N like the other tiles do: the average is per ATTEMPTED pid, so
-    # the denominator on show is the attempted count, not the whole sample.
-    _ind(m[4], "Total attempts", f"across the {sk['ever_attempted']} attempted",
-         f"{total_att}  ({avg_att}/pid)")
-
-    # --- Monitoring status summary: what needs doing, at a glance ---------------
-    st.divider()
-    st.subheader("Monitoring status summary")
+    # ---- the work, counted once for the whole page ----------------------------
     ocb = open_with_buckets(cases, summary)
     cnt = ocb["action_bucket"].value_counts() if len(ocb) else pd.Series(dtype=int)
     n_followup, n_resume = int(cnt.get("Callback", 0)), int(cnt.get("Resume", 0))
-    # What the Resume queue actually LISTS: held partials + 3_D, overlapping the
-    # other rows. Shown in the table so the count matches the tab; `n_resume` (the
-    # exclusive bucket) is what `actionable` totals on, so nothing double-counts.
+    # What the Resume queue LISTS: held partials + 3_D, overlapping the other
+    # queues. `n_resume` (the exclusive bucket) is what `actionable` totals on,
+    # so nothing double-counts.
     n_resume_shown = int(ocb["resume_queue"].sum()) if len(ocb) else 0
     n_keep, n_review = int(cnt.get("Keep calling", 0)), int(cnt.get("Review", 0))
     n_assign = int(((summary_view["case_state"] == "Not assigned")
@@ -489,60 +468,93 @@ with tab_summary:
     total = len(summary_view)
     actionable = n_followup + n_resume + n_keep + n_review + n_assign
     pct = round(100 * actionable / total) if total else 0
-    st.markdown(f"### Active pids: {pct}%  ({actionable} of {total})")
-    _mon = [(n_followup, "⏰ to be followed up", BLUE),
-            (n_resume_shown, "▶️ to be resumed", BLUE),
-            (n_assign, "🆕 to be assigned", BLUE),
-            (n_keep, "📵 to keep calling", BLUE),
-            (n_review, "🔎 to be reviewed", BLUE)]
+    # the follow-up queue split by urgency, so the most owed calls lead
+    _cb = ocb[ocb["action_bucket"] == "Callback"] if len(ocb) else ocb
+    n_overdue = (int((pd.to_numeric(_cb["callback_overdue"], errors="coerce").fillna(0) == 1).sum())
+                 if len(_cb) and "callback_overdue" in _cb.columns else 0)
+    n_next_hour = (int(_cb["callback_when"].astype(str).eq("within 1h").sum())
+                   if len(_cb) and "callback_when" in _cb.columns else 0)
+    n_other_cb = max(n_followup - n_overdue - n_next_hour, 0)
+
+    # ---- 1. DO NOW: the queues in priority order -------------------------------
+    st.subheader(f"🎯 Do now — {actionable} open pids ({pct}% of {total})")
+    _todo = [(n_overdue, "overdue callbacks", RED, "call first · ⏰ To be followed up"),
+             (n_next_hour, "callbacks due in the next hour", ORANGE, "⏰ To be followed up"),
+             (n_other_cb, "other callbacks", BLUE, "⏰ To be followed up"),
+             (n_resume_shown, "partial saves to resume", BLUE, "▶️ To be resumed"),
+             (n_assign, "never called", BLUE, "🆕 To be assigned"),
+             (n_keep, "to keep calling", BLUE, "📵 To keep calling"),
+             (n_review, "hard to reach", ORANGE, "supervisor · 🔎 To be reviewed")]
     if SHOW_WHATSAPP:
-        _mon.append((n_whatsapp, "📱 WhatsApp", BLUE))
-    flag_tiles(_mon)
+        _todo.append((n_whatsapp, "to message on WhatsApp", BLUE, "📱 WhatsApp"))
+    flag_tiles(_todo)
+    st.caption("Left to right = priority. The lists are in ✅ Active pids.")
 
-    # Completed, then rung again. The rollup closes these (completion is
-    # absorbing) so they no longer sit in the queues above — but the re-contact
-    # already happened, and that is a coordination failure supervisors should see.
+    # ---- 2. FIX: things that went wrong (each shown only when it happened) -----
     _rc = summary_view[summary_view.get("recontacted_after_complete", 0) == 1]
-    if len(_rc):
-        st.warning(f"⚠️ **{len(_rc)} called again after completing**")
-        _rc_cols = [c for c in ["pid", "route_recruited", "enumerator",
-                                "current_callcode", "total_attempts",
-                                "last_submission_time"] if c in _rc.columns]
-        st.dataframe(_rc[_rc_cols], width="stretch", hide_index=True)
-
-    # Closed by a supervisor, then logged against anyway. Same shape as the block
-    # above: the rollup keeps them closed (a supervisor closure is absorbing), so
-    # they are out of the queues — but the call was made, and a supervisor closure
-    # usually means the respondent asked not to be called again.
     _ac = summary_view[summary_view.get("recontacted_after_close", 0) == 1]
+    _held = summary_view[pd.to_numeric(summary_view.get("active_partialsave", 0),
+                                       errors="coerce").fillna(0) == 1]
+    _tab = (_held["tab_id"] if "tab_id" in _held.columns
+            else pd.Series("", index=_held.index)).fillna("").astype(str).str.strip()
+    _no_tab = _held[_tab.eq("")]
+    _sup = (pd.to_numeric(summary_view["is_supervisor"], errors="coerce").fillna(0)
+            if "is_supervisor" in summary_view.columns
+            else pd.Series(0, index=summary_view.index))
+    _closed = summary_view[
+        (summary_view["current_status"].astype(str).str.upper() == "INACTIVE")
+        & (_sup != 1) & ~summary_view["pid"].isin(_validated)]
+    _fix = [(len(_rc), "called again after completing", RED, "table below"),
+            (len(_ac), "called after a supervisor closed them", RED, "table below"),
+            (len(_no_tab), "partial saves with no tablet id", RED, "💾 Partial saves"),
+            (len(_closed), "closures waiting for validation", ORANGE,
+             "supervisor · 🛂 Supervisor review")]
+    st.divider()
+    if any(f[0] for f in _fix):
+        st.subheader("⚠️ To fix")
+        flag_tiles([f for f in _fix if f[0]])
+    else:
+        st.subheader("✅ Nothing to fix")
+    if len(_rc):
+        st.markdown(f"**Called again after completing ({len(_rc)})**")
+        st.dataframe(_rc[[c for c in ["pid", "route_recruited", "enumerator",
+                                      "current_callcode", "total_attempts",
+                                      "last_submission_time"] if c in _rc.columns]],
+                     width="stretch", hide_index=True)
     if len(_ac):
-        st.warning(f"⚠️ **{len(_ac)} called again after a supervisor closed them**")
-        _ac_cols = [c for c in ["pid", "route_recruited", "enumerator",
-                                "current_callcode", "calls_after_close",
-                                "last_submission_time"] if c in _ac.columns]
-        st.dataframe(_ac[_ac_cols], width="stretch", hide_index=True)
+        st.markdown(f"**Called after a supervisor closed them ({len(_ac)})**")
+        st.dataframe(_ac[[c for c in ["pid", "route_recruited", "enumerator",
+                                      "current_callcode", "calls_after_close",
+                                      "last_submission_time"] if c in _ac.columns]],
+                     width="stretch", hide_index=True)
 
-    # --- Inactive pids: closed / completed, by reason (mirrors the Active table)-
+    # ---- 3. PROGRESS: how far through the sample --------------------------------
+    st.divider()
+    st.subheader("📈 Progress")
+    flag_tiles([
+        (sk["respondents"], "respondents in the sample", BLUE),
+        (f"{ea_pct}%", f"ever attempted ({sk['ever_attempted']}) · "
+                       f"{sk['never_attempted']} not yet", BLUE),
+        (f"{sk['completion_rate']}%", f"completed of sample ({sk['completed']} of "
+                                      f"{sk['respondents']})", GREEN),
+        (f"{done_of_contacted}%", f"completed of contacted ({sk['completed']} of "
+                                  f"{n_picked} who picked up)", GREEN),
+        (total_att, f"total attempts ({avg_att} per attempted pid)", BLUE),
+    ])
+
+    # Finished pids by reason. Completion is absorbing, so a pid that finished
+    # and was then rung again counts as completed on is_complete even though its
+    # LAST callcode is a call outcome; keying on the callcode would lose those.
     _inact_rows = summary_view[
         summary_view["current_status"].astype(str).str.upper() == "INACTIVE"]
     inactive_cc = _inact_rows["current_callcode"].astype(str).str.strip()
-    # Completion is absorbing, so a pid that finished and was then rung again is
-    # closed on is_complete even though its LAST callcode is a call outcome.
-    # Keying the completed row on the callcode would lose exactly those rows.
     _is_done = _inact_rows["is_complete"] == 1
-    _n_inact, _n_tot = len(inactive_cc), len(summary_view)
-    _inact_pct = round(100 * _n_inact / _n_tot) if _n_tot else 0
-    st.divider()
-    st.markdown(f"### Inactive pids: {_inact_pct}%  ({_n_inact} of {_n_tot})")
-    _inact = [
-        ("1", "✅ completed"),
-        ("0_R", "refusal (0_R)"),
-        ("0_UN", "ineligible (0_UN)"),
-        ("0_IN", "incorrect respondent (0_IN)"),
-        ("0_WN", "wrong number (0_WN)"),
-    ]
-    # completed first (on is_complete), then the closure codes among the rest.
-    # _other is the REMAINDER, so the tiles always add up to the inactive total.
+    _n_inact = len(inactive_cc)
+    _inact_pct = round(100 * _n_inact / total) if total else 0
+    st.markdown(f"**Finished: {_n_inact} pids ({_inact_pct}%)**")
+    _inact = [("1", "completed"), ("0_R", "refusal (0_R)"), ("0_UN", "ineligible (0_UN)"),
+              ("0_IN", "incorrect respondent (0_IN)"), ("0_WN", "wrong number (0_WN)")]
+    # _other is the REMAINDER, so the tiles always add up to the finished total.
     _pids = [int(_is_done.sum())]
     _pids += [int(((inactive_cc == code) & ~_is_done).sum()) for code, _ in _inact[1:]]
     _pids.append(max(_n_inact - sum(_pids), 0))
