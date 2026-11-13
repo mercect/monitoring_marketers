@@ -728,13 +728,13 @@ with tab_action:
             # ATTEMPTS that ended on a wrong-number code: a number can be known
             # bad without another attempt being spent on it, so that one reads 0
             # while a number really is wrong.
-            # The call-list position first, then the effort history as TOTALS
-            # (how often each outcome happened, whether they ever picked up),
-            # then the last call: its code, who made it, and the comment.
+            # The call-list position first, then which shifts are left and
+            # whether they ever picked up, then the effort as TOTALS, then the
+            # last call: its code, who made it, and the comment.
             # callcode / enumerator are shown as last_callcode / last_enumerator.
-            "Keep calling": ["pid", "assigned_day", "ordering", "total_attempts",
-                             "times_noanswer", "times_off", "times_rescheduled",
-                             "times_dropped", "ever_picked_up", "shifts_to_try",
+            "Keep calling": ["pid", "ordering", "assigned_day", "shifts_to_try",
+                             "ever_picked_up", "total_attempts", "times_noanswer",
+                             "times_off", "times_rescheduled", "times_dropped",
                              "numbers_wrong", "last_submission_time",
                              "callcode", "enumerator", "last_comment"],
             # last_section is the readable label, not last_section_n. tab_id comes
