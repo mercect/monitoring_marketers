@@ -202,14 +202,19 @@ def todays_pace(subs, day):
 
 
 def with_list_order(df):
-    """df plus the keys that put pids in CALL-LIST ORDER: _rec (recruitment
-    date) and _ord (`ordering`, the pid's position in that day's call list, a
-    column on the data_entry tab). Also guarantees an `ordering` column to show,
-    blank until the sheet has one. Sorting on (_rec, _ord) works whether the
-    numbering restarts for each recruitment day or runs across them."""
+    """df plus the keys that put pids in CALL-LIST ORDER, from two columns on
+    the data_entry tab: `assigned_day` (4 or 5, which call list the pid is on)
+    and `ordering` (its position in that list; the numbering restarts for each
+    assigned day). Adds _rec (recruitment date), _day and _ord, so sorting on
+    (_rec, _day, _ord) gives each recruitment day's day-4 list, then its day-5
+    list, each in order. Guarantees both columns exist to show, blank until the
+    sheet has them."""
     out = df.copy()
-    if "ordering" not in out.columns:
-        out["ordering"] = ""
+    for c in ("assigned_day", "ordering"):
+        if c not in out.columns:
+            out[c] = ""
+    out["_day"] = pd.to_numeric(out["assigned_day"].astype(str).str.extract(r"(\d+)")[0],
+                                errors="coerce")
     out["_ord"] = pd.to_numeric(out["ordering"], errors="coerce")
     if "date_recruited" in out.columns:
         rec = parse_dates(out["date_recruited"])
@@ -292,7 +297,7 @@ def open_with_buckets(cases, summary):
                     "times_rescheduled", "times_dropped",
                     "times_noanswer", "times_off",
                     "last_section", "tab_id", "last_comment", "last_submission_time",
-                    "ordering", "date_recruited"]
+                    "assigned_day", "ordering", "date_recruited"]
                    if c in summary.columns]]
     oc = oc.merge(eff, on="pid", how="left")
     oc["shifts_tried"] = (oc["shifts_covered_n"].fillna(0).astype(int).astype(str) + "/5")
@@ -727,7 +732,7 @@ with tab_action:
             # (how often each outcome happened, whether they ever picked up),
             # then the last call: its code, who made it, and the comment.
             # callcode / enumerator are shown as last_callcode / last_enumerator.
-            "Keep calling": ["pid", "ordering", "total_attempts",
+            "Keep calling": ["pid", "assigned_day", "ordering", "total_attempts",
                              "times_noanswer", "times_off", "times_rescheduled",
                              "times_dropped", "ever_picked_up", "shifts_to_try",
                              "numbers_wrong", "last_submission_time",
@@ -771,15 +776,15 @@ with tab_action:
                 rows = followup_view(rows)
             elif key == "Keep calling":
                 # The next-attempt pile: fewest attempts first, and within the same
-                # number of attempts, CALL-LIST ORDER (recruitment day, then
-                # `ordering`). Without an ordering yet, fewest shift windows tried
+                # number of attempts, CALL-LIST ORDER (recruitment day, assigned
+                # day, then `ordering`). Without an ordering yet, fewest shift windows tried
                 # and the longest left come next, as before.
                 rows = with_list_order(rows)
                 rows["_last"] = pd.to_datetime(rows.get("last_submission_time"),
                                                errors="coerce")
                 rows = rows.sort_values(
-                    ["total_attempts", "_rec", "_ord", "shifts_covered_n", "_last"],
-                    na_position="last").drop(columns=["_last", "_rec", "_ord"])
+                    ["total_attempts", "_rec", "_day", "_ord", "shifts_covered_n", "_last"],
+                    na_position="last").drop(columns=["_last", "_rec", "_day", "_ord"])
             else:
                 rows = rows.sort_values("_active_first", ascending=False)
             # The supervisor's note (Supervisor review: keep trying / sent back)
@@ -836,16 +841,17 @@ with tab_action:
     else:
         # CALL-LIST ORDER: first attempts go strictly in list order, so the top
         # row is always the next pid to hand out. Oldest recruitment day first
-        # (the longest waiting), then `ordering` within the day.
+        # (the longest waiting), then its day-4 list before its day-5 list, each
+        # in `ordering`.
         new_cases["days_waiting"] = days_waiting(new_cases, data_now(summary))
         new_cases = (with_list_order(new_cases)
-                     .sort_values(["_rec", "_ord"], na_position="last")
-                     .drop(columns=["_rec", "_ord"]))
+                     .sort_values(["_rec", "_day", "_ord"], na_position="last")
+                     .drop(columns=["_rec", "_day", "_ord"]))
         flag_tiles([(int((new_cases["days_waiting"] >= WAIT_DAYS).sum()),
                      f"waiting {WAIT_DAYS}+ days since recruitment", RED)])
         # Both roster vintages listed: the 2026-08 data-entry names first,
         # then the earlier ones. Only the columns actually on the sheet show.
-        newcols = [c for c in ["pid", "ordering", "days_waiting", "route_recruited", "date_recruited",
+        newcols = [c for c in ["pid", "assigned_day", "ordering", "days_waiting", "route_recruited", "date_recruited",
                                "number_of_phone_numbers", "phone_sample_status",
                                "own_phone", "phones_provided", "rec_signup"]
                    if c in new_cases.columns]

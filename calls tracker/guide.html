@@ -152,7 +152,7 @@ footer { color: var(--muted); font-size: 13px; }
       <p><strong>Red rows</strong> in a table are overdue callbacks.</p>
 
       <h3>Call-list order</h3>
-      <p><code>ordering</code> is each pid's position in the day's call list, from the randomisation. First attempts follow it strictly, and so does the next-attempt pile. It comes from the <code>ordering</code> column of the data entry sheet.</p>
+      <p>Each recruitment day's sign-ups are split into two call lists by <code>assigned_day</code> (<code>4</code> or <code>5</code>), and <code>ordering</code> is each pid's position in its list, from the randomisation. First attempts follow this order strictly, and so does the next-attempt pile: the day-4 list before the day-5 list, each in <code>ordering</code>. Both columns come from the data entry sheet.</p>
 
       <h3>Shift windows</h3>
       <p><code>shifts_to_try</code> lists the windows nobody has called in yet, or says <em>All tried</em> / <em>None tried</em>. Spread calls across windows: someone who never answers in the morning may answer in the evening.</p>
@@ -286,9 +286,9 @@ footer { color: var(--muted); font-size: 13px; }
       <div class="panel queue" style="--qc: var(--orange)">
         <h3>📵 To keep calling</h3>
         <div class="meta">Codes <code>2_IN</code> <code>2_NA</code> <code>2_OF</code> <code>2_WN</code></div>
-        <p>No answer or phone off, or a wrong number or wrong person with other numbers still to try. The list starts with the fewest attempts; within the same number of attempts, it follows the <strong>call-list order</strong> (<code>ordering</code>). Take the top row.</p>
+        <p>No answer or phone off, or a wrong number or wrong person with other numbers still to try. The list starts with the fewest attempts; within the same number of attempts, it follows the <strong>call-list order</strong> (<code>assigned_day</code>, then <code>ordering</code>). Take the top row.</p>
         <div class="flags"><div class="flag orange"><b>12</b><span>1 attempt only</span></div></div>
-        <p>After <code>ordering</code> come the totals: how many calls ended in no answer (<code>times_noanswer</code>), phone off (<code>times_off</code>), a reschedule (<code>times_rescheduled</code>) or a drop (<code>times_dropped</code>), and whether the respondent ever picked up (<code>ever_picked_up</code>). Someone who has picked up before but keeps rescheduling needs a different approach from someone whose phone is always off.</p>
+        <p>After <code>assigned_day</code> and <code>ordering</code> come the totals: how many calls ended in no answer (<code>times_noanswer</code>), phone off (<code>times_off</code>), a reschedule (<code>times_rescheduled</code>) or a drop (<code>times_dropped</code>), and whether the respondent ever picked up (<code>ever_picked_up</code>). Someone who has picked up before but keeps rescheduling needs a different approach from someone whose phone is always off.</p>
         <p>The last three columns describe the last call: <code>last_callcode</code>, <code>last_enumerator</code> and <code>last_comment</code>.</p>
         <p><code>numbers_wrong</code> is the most numbers any single call found wrong. The form counts per call, not in total, so this never counts the same wrong number twice.</p>
       </div>
@@ -309,7 +309,7 @@ footer { color: var(--muted); font-size: 13px; }
 
       <div class="panel queue" style="--qc: var(--green)">
         <h3>🆕 To be assigned</h3>
-        <p>Eligible sign-ups nobody has called yet. Assign these first, spread across the day, <strong>strictly in call-list order</strong>: the list is sorted by recruitment day, then <code>ordering</code>, so the top row is always the next pid to hand out. Never skip ahead (a 5 before a 3), and never repeat a case while new ones are waiting. Anyone recruited 3 or more days ago is red; <code>days_waiting</code> counts the days since recruitment.</p>
+        <p>Eligible sign-ups nobody has called yet. Assign these first, spread across the day, <strong>strictly in call-list order</strong>: the list is sorted by recruitment day, then <code>assigned_day</code> (day 4 before day 5), then <code>ordering</code>, so the top row is always the next pid to hand out. Never skip ahead (a 5 before a 3), and never repeat a case while new ones are waiting. Anyone recruited 3 or more days ago is red; <code>days_waiting</code> counts the days since recruitment.</p>
         <div class="flags"><div class="flag red"><b>2</b><span>waiting 3+ days since recruitment</span></div></div>
       </div>
     </section>
