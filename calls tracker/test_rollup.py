@@ -153,6 +153,27 @@ def check_review_rules(fails):
                                                      "bogus", "", "", ""]))]))) == 0)
 
 
+def check_enumerator_names(fails):
+    """enumerators.py: every spelling becomes the official name; unknown names
+    stay as typed; supervisor rows are not reported as unknown."""
+    import warnings
+    warnings.filterwarnings("ignore", message="No runtime found")
+    from enumerators import alias_map, apply_names, unknown_names
+    roster = pd.DataFrame({"name": ["Issa Adams Kamara", "Mohammed Tunis"],
+                           "also_typed_as": ["Issa Adams; Issa Adsms", "Mohamed Tunis"]})
+    amap = alias_map(roster)
+    subs = pd.DataFrame({"enum_name": ["Issa Adams", "ISSA ADAMS", "Issa Adsms",
+                                       "issa adams kamara", "Mohamed  Tunis", "Someone Else",
+                                       "Supervisor"],
+                         "is_supervisor_closure": ["0", "0", "0", "0", "0", "0", "1"]})
+    got = apply_names(subs, amap)["enum_name"].tolist()
+    want = ["Issa Adams Kamara"] * 4 + ["Mohammed Tunis", "Someone Else", "Supervisor"]
+    if got != want:
+        fails.append(f"[enumerator names] merged to {got}")
+    if unknown_names(apply_names(subs, amap), amap) != {"Someone Else": 1}:
+        fails.append("[enumerator names] unknown names should be just 'Someone Else'")
+
+
 def check_baseline(s, fails):
     got = {"rows": len(s), "completed": int((s["is_complete"] == 1).sum()),
            "ever_attempted": int(s["ever_attempted"].sum()),
@@ -200,7 +221,8 @@ def main():
 
     # --- Supervisor review rules (hand-made frame, always runs) ----------------
     check_review_rules(fails)
-    print("supervisor review rules: checked")
+    check_enumerator_names(fails)
+    print("supervisor review rules + enumerator names: checked")
 
     # --- fixture: invariants + baseline + determinism -------------------------
     # The demo fixture is real-data-shaped but synthetic. It is NOT in the git

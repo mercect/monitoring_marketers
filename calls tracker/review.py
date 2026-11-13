@@ -117,6 +117,16 @@ def _client():
         json.loads(str(_secret("gcp_service_account_json"))))
 
 
+def read_tab_values(name):
+    """All cell values of another tab of the same Sheet (a list of rows), or
+    None when there is no such tab. Raises on any other problem."""
+    import gspread
+    try:
+        return _client().open_by_key(sheet_id()).worksheet(name).get_all_values()
+    except gspread.WorksheetNotFound:
+        return None
+
+
 def _worksheet(create=False):
     import gspread
     sh = _client().open_by_key(sheet_id())

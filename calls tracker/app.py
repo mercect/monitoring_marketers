@@ -32,6 +32,7 @@ from rollup import (OPEN_STATUSES, effort_by_enumerator, summary_kpis,
                     eligible_roster, recruit_exclusions,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME,
                     is_attempt_row, is_contact_row, _to_dt)
+import enumerators
 import review
 import review_tab
 
@@ -452,7 +453,10 @@ try:
     # Supervisor review log (review.py). Never raises: when the service account
     # is not set up it comes back empty and the dashboard runs exactly as before.
     decisions, decisions_meta = review.load_decisions()
-    subs, sample, cases, summary, meta = load_all(decisions=decisions)
+    # One name per enumerator, from the `enumerators` tab (enumerators.py).
+    enum_roster, enum_meta = enumerators.load_enumerators()
+    name_map = enumerators.alias_map(enum_roster)
+    subs, sample, cases, summary, meta = load_all(decisions=decisions, name_map=name_map)
 except Exception as e:
     st.error(f"Could not load / roll up the data.\n\n{e}")
     st.stop()
@@ -1202,6 +1206,10 @@ with st.expander("🔧 What this page is built from — sources, filters, checks
          "origin": "Google Sheet (service account)" if decisions_meta.get("ok") else "⚠️ not read",
          "tab": review.TAB, "gid": "", "rows": decisions_meta.get("rows", 0),
          "read at": decisions_meta.get("msg", "") or "ok"},
+        {"what": "Enumerator names",
+         "origin": "Google Sheet" if enum_meta.get("rows") else "⚠️ not read — names shown as typed",
+         "tab": enumerators.TAB, "gid": "", "rows": enum_meta.get("rows", 0),
+         "read at": enum_meta.get("msg", "") or "ok"},
     ]), width="stretch", hide_index=True)
     st.caption(f"**Rollup logic {meta['code_stamp']}** — when the calculation code this "
                f"process is running was last edited. Sheet data auto-refreshes every "
@@ -1257,6 +1265,7 @@ with st.expander("🔧 What this page is built from — sources, filters, checks
                             errors="coerce").fillna(0).sum())
     _ac_n = int(pd.to_numeric(summary.get("recontacted_after_close", 0),
                               errors="coerce").fillna(0).sum())
+    _unknown = (enumerators.unknown_names(subs, name_map) if name_map else {})
     _checks = [
         {"check": "Signed-up rows that also carry an ineligibility flag",
          "count": n_conflict, "verdict": "OK" if not n_conflict else "⚠️ check data entry"},
@@ -1266,6 +1275,11 @@ with st.expander("🔧 What this page is built from — sources, filters, checks
          "count": _ac_n, "verdict": "OK" if not _ac_n else "⚠️ see Calls summary"},
         {"check": "Pids with attempts but no roster row",
          "count": n_offroster_cases, "verdict": "OK" if not n_offroster_cases else "older sample"},
+        {"check": "Names in submissions not on the enumerators tab",
+         "count": len(_unknown),
+         "verdict": ("OK" if not _unknown else "; ".join(f"{k} ({v})" for k, v in
+                                                    list(_unknown.items())[:8])
+                     + (" …" if len(_unknown) > 8 else ""))},
     ]
     st.dataframe(pd.DataFrame(_checks), width="stretch", hide_index=True)
 

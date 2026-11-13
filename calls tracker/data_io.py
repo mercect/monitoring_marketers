@@ -142,7 +142,7 @@ def load_sample(_subs):
         "rows": 0, "dropped_test": 0, "read": f"{datetime.now():%H:%M:%S}"}
 
 
-def load_all(decisions=None):
+def load_all(decisions=None, name_map=None):
     """subs + sample as loaded, plus the rolled-up cases and per-pid summary.
 
     The rollup runs on the FULL sample tab, then hide_columns() drops the
@@ -152,6 +152,11 @@ def load_all(decisions=None):
     them, while every derived column is still computed from the whole sheet."""
     subs, a_meta = load_submissions()
     sample, s_meta = load_sample(subs)
+    # One name per enumerator (enumerators.py): every spelling a person typed
+    # becomes their official name, so each is counted once on every tab.
+    if name_map:
+        from enumerators import apply_names
+        subs = apply_names(subs, name_map)
     # Supervisor review: each decision that changes a status becomes a
     # supervisor row BEFORE the rollup, so every tab sees the reviewed status.
     # Only the call-tracking monitor passes `decisions`; the PI dashboard does not.
