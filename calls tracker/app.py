@@ -94,6 +94,51 @@ def style_overdue(df, when_col="callback_when", mask=None):
     return df.style.apply(lambda _: styles, axis=None)
 
 
+RED, ORANGE, GREY = "#e03131", "#f08c00", "#868e96"
+BLUE, GREEN = "#1c7ed6", "#2f9e44"
+
+
+def flag_tiles(items):
+    """A row of big count tiles: [(count, label, colour), ...]. A tile with a
+    count of 0 turns grey, so only what needs attention stands out. Plain HTML
+    with a translucent fill, so it reads in both the light and dark theme."""
+    tiles = []
+    for n, label, colour in items:
+        c = colour if n else GREY
+        tiles.append(
+            f'<div style="border:1px solid {c};border-left:6px solid {c};'
+            f'border-radius:8px;padding:8px 18px;min-width:170px;background:{c}1A">'
+            f'<div style="font-size:1.9rem;font-weight:700;line-height:1.15;color:{c}">{n}</div>'
+            f'<div style="font-size:0.95rem;opacity:.85">{label}</div></div>')
+    st.markdown('<div style="display:flex;gap:12px;flex-wrap:wrap;margin:2px 0 12px">'
+                + "".join(tiles) + "</div>", unsafe_allow_html=True)
+
+
+def queue_flags(key, rows, red=None):
+    """The flag tiles above each work queue: the one or two counts that say
+    what needs attention first. `rows` is the queue before columns are trimmed."""
+    def num(col):
+        return pd.to_numeric(rows.get(col, pd.Series(0, index=rows.index)),
+                             errors="coerce").fillna(0)
+    if key == "Callback":
+        when = rows.get("callback_when", pd.Series("", index=rows.index)).astype(str)
+        return [(int(red.sum()) if red is not None else 0, "overdue", RED),
+                (int(when.eq("within 1h").sum()), "due in the next hour", ORANGE)]
+    if key == "Keep calling":
+        return [(int((num("total_attempts") <= 1).sum()), "1 attempt only", ORANGE)]
+    if key == "Resume":
+        held = num("active_partialsave") == 1
+        tab = rows.get("tab_id", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip()
+        return [(int(held.sum()), "held on a tablet now", BLUE),
+                (int((held & tab.eq("")).sum()), "no tablet id", RED)]
+    if key == "Review":
+        return [(int((num("total_attempts") > ATTEMPTS_MAX).sum()),
+                 f"more than {ATTEMPTS_MAX} attempts", RED),
+                (int((num("shifts_covered_n") >= SHIFTS_MOST).sum()),
+                 f"{SHIFTS_MOST}+ shifts tried", ORANGE)]
+    return []
+
+
 NO_CALLBACK_TIME = "Not specified, check final comments"
 
 
@@ -290,17 +335,6 @@ cases["supervisor_note"] = cases["pid"].map(_notes).fillna("")
 _validated = review.validated_pids(decisions)
 cases_roster = cases
 
-# What each tab is for. Lives at the top of the Calls summary tab (below), not
-# here — the header stays to the title, the data-source line and Refresh.
-TAB_LEGEND = """
-- **🧾 Calls summary** — indicators + what's active / inactive
-- **✅ Active pids** — open pids to work, grouped by what to do
-- **🗄️ Inactive pids** — closed pids
-- **💾 Partial saves** — which tablet each **still-held** partial is sitting on
-- **👤 By enumerator** — what's on each plate now, + calls made
-- **📋 Tracking sheet** — one row per pid, full detail
-- **🛂 Supervisor review** — validate closures and decide hard cases (editing is password-locked)
-"""
 
 _, right = st.columns([4, 1])
 if right.button("🔄 Refresh now"):
@@ -367,9 +401,8 @@ rec_pids = date_range_filter(
     help="When the respondent was recruited (sample tab).",
     default_from=_batch_date)
 if _batch_date:
-    st.sidebar.caption(f"Opens on the latest batch recruited **{_batch_date:%d %b}**"
-                       + (f" ({', '.join(_batch_routes)})" if _batch_routes else "")
-                       + ". Widen either filter to see earlier ones.")
+    st.sidebar.caption(f"Latest batch: **{_batch_date:%d %b}**"
+                       + (f" ({', '.join(_batch_routes)})" if _batch_routes else ""))
 
 summary_view = summary
 # combine the pid-keyed filters (None = that filter is untouched). keep_pids stays
@@ -396,11 +429,7 @@ tab_summary, tab_action, tab_archive, tab_partial, tab_enum, tab_track, tab_revi
 # TAB 1 — RESPONDENT SUMMARY (supervisor view: one row per respondent, whole sample)
 # ============================================================================
 with tab_summary:
-    # same weight as "Indicators at a glance" below it
-    st.subheader("Dashboard content")
-    st.markdown(TAB_LEGEND)
-    st.divider()
-
+    # What each tab is for, and every explanation, lives in USER_GUIDE.md.
     sk = summary_kpis(summary_view)
     resp = sk["respondents"] or 1
     ea_pct = round(100 * sk["ever_attempted"] / resp)
@@ -457,44 +486,25 @@ with tab_summary:
     actionable = n_followup + n_resume + n_keep + n_review + n_assign
     pct = round(100 * actionable / total) if total else 0
     st.markdown(f"### Active pids: {pct}%  ({actionable} of {total})")
-    _mon_rows = [
-        ("To be followed up", n_followup,
-         "reschedules or drops — a callback time was set or the call dropped. "
-         "Every one of them is listed here and nowhere else, however overdue or "
-         "heavily worked; overdue ones show red"),
-        ("To be resumed (partial saved)", n_resume_shown,
-         "a half-finished interview is still sitting on a tablet — the last submission "
-         "is a 4_ (overlaps the rows above: a 4_SC also has a callback time)"),
-        ("To be assigned", n_assign, "not attempted yet"),
-        ("To keep calling", n_keep,
-         "no answer / phone off, or wrong number / incorrect respondent with other numbers to try"),
-        ("To be reviewed (hard to reach)", n_review,
-         f"≥{SHIFTS_MOST}/5 shifts tried OR >{ATTEMPTS_MAX} attempts and still no "
-         "completion. Callbacks are never escalated here"),
-    ]
+    _mon = [(n_followup, "⏰ to be followed up", BLUE),
+            (n_resume_shown, "▶️ to be resumed", BLUE),
+            (n_assign, "🆕 to be assigned", BLUE),
+            (n_keep, "📵 to keep calling", BLUE),
+            (n_review, "🔎 to be reviewed", BLUE)]
     if SHOW_WHATSAPP:
-        _mon_rows.append(("To be reached out on WhatsApp", n_whatsapp,
-                          "PIDs attempted ≥3 times need to be messaged on WhatsApp "
-                          "(overlaps the rows above)"))
-    mon = pd.DataFrame(_mon_rows, columns=["action", "pids", "what it is"])
-    st.dataframe(mon, width="stretch", hide_index=True)
+        _mon.append((n_whatsapp, "📱 WhatsApp", BLUE))
+    flag_tiles(_mon)
 
     # Completed, then rung again. The rollup closes these (completion is
     # absorbing) so they no longer sit in the queues above — but the re-contact
     # already happened, and that is a coordination failure supervisors should see.
     _rc = summary_view[summary_view.get("recontacted_after_complete", 0) == 1]
     if len(_rc):
-        st.warning(
-            f"⚠️ **{len(_rc)} respondent(s) were called again AFTER completing the "
-            "interview.** They are closed here and excluded from the queues above, "
-            "but the calls were already made — check how a finished pid got back "
-            "onto someone's list.")
+        st.warning(f"⚠️ **{len(_rc)} called again after completing**")
         _rc_cols = [c for c in ["pid", "route_recruited", "enumerator",
                                 "current_callcode", "total_attempts",
                                 "last_submission_time"] if c in _rc.columns]
         st.dataframe(_rc[_rc_cols], width="stretch", hide_index=True)
-        st.caption("`enumerator` and `current_callcode` are from the LATEST call — "
-                   "i.e. whoever rang them after the interview was already done.")
 
     # Closed by a supervisor, then logged against anyway. Same shape as the block
     # above: the rollup keeps them closed (a supervisor closure is absorbing), so
@@ -502,18 +512,11 @@ with tab_summary:
     # usually means the respondent asked not to be called again.
     _ac = summary_view[summary_view.get("recontacted_after_close", 0) == 1]
     if len(_ac):
-        st.warning(
-            f"⚠️ **{len(_ac)} respondent(s) were logged against AFTER a supervisor "
-            "closed the case.** They stay closed here and are out of the queues, but "
-            "a closure usually means the respondent asked not to be called again — "
-            "so check how a shut case got back onto someone's list.")
+        st.warning(f"⚠️ **{len(_ac)} called again after a supervisor closed them**")
         _ac_cols = [c for c in ["pid", "route_recruited", "enumerator",
                                 "current_callcode", "calls_after_close",
                                 "last_submission_time"] if c in _ac.columns]
         st.dataframe(_ac[_ac_cols], width="stretch", hide_index=True)
-        st.caption("`current_callcode` is the SUPERVISOR'S closing code — the later "
-                   "submissions are excluded, which is why the case reads closed. "
-                   "`calls_after_close` is how many were logged after it.")
 
     # --- Inactive pids: closed / completed, by reason (mirrors the Active table)-
     _inact_rows = summary_view[
@@ -528,33 +531,26 @@ with tab_summary:
     st.divider()
     st.markdown(f"### Inactive pids: {_inact_pct}%  ({_n_inact} of {_n_tot})")
     _inact = [
-        ("1", "Completed the interview"),
-        ("0_R", "Refusal (0_R)"),
-        ("0_UN", "Ineligible (0_UN) — under 18 / outside area / no phone"),
-        ("0_IN", "Incorrect respondent (0_IN) — wrong person, numbers exhausted"),
-        ("0_WN", "Wrong number (0_WN) — numbers exhausted"),
+        ("1", "✅ completed"),
+        ("0_R", "refusal (0_R)"),
+        ("0_UN", "ineligible (0_UN)"),
+        ("0_IN", "incorrect respondent (0_IN)"),
+        ("0_WN", "wrong number (0_WN)"),
     ]
     # completed first (on is_complete), then the closure codes among the rest.
-    # _other is the REMAINDER, so the rows always add up to the inactive total.
+    # _other is the REMAINDER, so the tiles always add up to the inactive total.
     _pids = [int(_is_done.sum())]
     _pids += [int(((inactive_cc == code) & ~_is_done).sum()) for code, _ in _inact[1:]]
     _pids.append(max(_n_inact - sum(_pids), 0))
-    _what = [d for _, d in _inact] + ["Other closure"]
-    inactive_tbl = pd.DataFrame({
-        "action": ["No action"] + [""] * (len(_what) - 1),
-        "pids": _pids,
-        "what it is": _what,
-    })
-    st.dataframe(inactive_tbl, width="stretch", hide_index=True)
+    _what = [d for _, d in _inact] + ["other closure"]
+    flag_tiles([(n, w, GREEN if i == 0 else BLUE)
+                for i, (n, w) in enumerate(zip(_pids, _what))])
 
 
 # ============================================================================
 # TAB — TRACKING SHEET (one row per respondent, full detail)
 # ============================================================================
 with tab_track:
-    st.caption("One row per respondent (see context/tracking_sheet_codebook.md). "
-               "**Current state** = most recent submission; **history** columns "
-               "aggregate all submissions. Never-called respondents show empty current state.")
     tracking = summary_view.sort_values("last_submission_time", ascending=False)
     disp_cols = [c for c in SUMMARY_COLS if c in tracking.columns]
     disp = tracking[disp_cols].copy()
@@ -575,72 +571,15 @@ with tab_action:
     # when nothing has been called yet — so it must live OUTSIDE this guard, or a
     # roster with no submissions shows an empty tab instead of the whole workload.
     if cases.empty:
-        st.info("No calls logged yet for the pids in view — so there are no work "
-                "queues. Everything still to be handed out is listed below.")
+        st.info("No calls logged yet.")
     else:
         status = cases["status"].astype(str).str.upper()
 
         st.subheader("Work queues — open pids")
-        st.markdown("Enumerators: review these pids and make sure **each one is addressed**.")
-        SHIFT_LEGEND = ("Shift windows — A 07:30–09:30 · B 09:30–12:30 · C 12:30–15:30 · "
-                        "D 15:30–17:30 · E 17:30–20:30.  `shifts_to_try` = untried windows, "
-                        "or *All tried* / *None tried*.")
-
-        GUIDANCE = {
-            "Callback": "Prioritise the **most imminent** callbacks first — "
-                        ":red[**overdue ones are red**] and sit at the top. A "
-                        "callback stays in this list however many shifts or attempts "
-                        "it has already taken, and however overdue it is: a time was "
-                        "promised to the respondent, so it keeps being owed. "
-                        "Callbacks are **never** moved to 🔎 To be reviewed. "
-                        "`callback_by` = who calls back (blank on the form = "
-                        "enumerator). `comments` = the reason given (rsd_reason) — "
-                        "then the final comment.",
-            "Keep calling": "Keep dialing (no-answer / phone-off), or try the other numbers "
-                            "on file (wrong number / incorrect respondent). **Fewest "
-                            "attempts first.** `numbers_wrong` = the most numbers any "
-                            "single call found wrong (the form counts per call, not in "
-                            "total).",
-            "Resume": "A half-finished interview is still sitting on someone's tablet. Keep "
-                      "trying to resume it from **that device**; if you can't, hand the pid "
-                      "to another enumerator. **Overlaps the other queues** — a `4_SC` held "
-                      "partial also has a callback time, so it is listed here *and* under "
-                      "⏰ To be followed up. **A blank `callback_due` is normal** on a "
-                      "`4_D` / `4_NA` / `4_OF` hold: only an *Updated reschedule* log asks "
-                      "for a day and time, so the other kinds carry none.",
-            "Review": f"Escalations only — pids tried across ≥{SHIFTS_MOST} shifts "
-                      f"OR >{ATTEMPTS_MAX} attempts and still no completion. "
-                      "**Callbacks are excluded**: a pid with a callback time has a "
-                      "scheduled next step already, so it belongs in ⏰ To be followed "
-                      "up and stays there.",
-        }
-
-        # What puts a pid in each queue, printed under its subtitle. Built FROM the
-        # rollup's own code sets, so the text can never drift from the actual rule.
-        def _codes(s):
-            return " · ".join(f"`{c}`" for c in sorted(s))
-
-        DEFN = {
-            "Callback": f"**Codes:** {_codes(CC_CALLBACK)} — a callback time was "
-                        "agreed, or the call dropped and needs chasing. **Every** open "
-                        "pid on these codes is listed here, whatever its history and "
-                        "however overdue.",
-            "Keep calling": f"**Codes:** {_codes(CC_KEEP_CALLING)} — no answer / phone "
-                            "off, or a wrong number / incorrect respondent with other "
-                            "numbers still to try.",
-            "Resume": "**Codes:** every pid whose **last submission** is a `4_` "
-                      "(`4_D` · `4_SC` · `4_NA` · `4_OF`) — a partial save still held "
-                      f"on a tablet — plus {_codes(CC_RESUME - {c for c in CC_RESUME if c.startswith('4_')})}. "
-                      "A pid stops appearing here the moment a later submission is "
-                      "logged against it (it was resumed, or closed), so this list is "
-                      "only what is **still outstanding**.",
-            "Review": "**Not code-based** — an open pid worked hard with nothing to "
-                      f"show for it: ≥{SHIFTS_MOST} shifts tried OR >{ATTEMPTS_MAX} "
-                      "attempts and still no completion. Also catches any open callcode "
-                      f"that matches none of the queues above. A callback "
-                      f"({_codes(CC_CALLBACK)}) is **never** escalated here — it has a "
-                      "scheduled next step, so it stays under ⏰ To be followed up.",
-        }
+        # One line of key for the shift letters; every other explanation of the
+        # queues (codes, rules, columns) lives in USER_GUIDE.md.
+        st.caption("Shifts: A 07:30–09:30 · B 09:30–12:30 · C 12:30–15:30 · "
+                   "D 15:30–17:30 · E 17:30–20:30")
 
         open_cases = open_with_buckets(cases, summary)   # shared with the monitoring summary
 
@@ -734,30 +673,25 @@ with tab_action:
             # follow-up queue no longer shows its overdue flag, only the colour.
             _red = (rows["overdue"].eq("Yes") if key == "Callback" and "overdue" in rows.columns
                     else None)
+            # Each queue: heading, a flag or two for what needs attention, the
+            # table. Explanations live in USER_GUIDE.md. Counted BEFORE the
+            # columns are trimmed, since some flags read columns not shown.
+            _flags = queue_flags(key, rows, _red)
             rows = rows[_cols]
             st.markdown(f"#### {label} ({len(rows)})")
-            if GUIDANCE.get(key):
-                st.caption(GUIDANCE[key])
-            if DEFN.get(key):
-                st.caption(DEFN[key])
-            if rows.empty:
-                st.caption("Nothing in this queue right now.")
-            else:
-                # style_overdue no-ops on a queue with no callback_when column,
-                # so this is safe for all four and marks it wherever it is shown.
+            if len(rows):
+                flag_tiles(_flags)
                 st.dataframe(style_overdue(yesno(rows), mask=_red),
                              width="stretch", hide_index=True)
-                st.caption(SHIFT_LEGEND)
+            else:
+                st.caption("Nothing here right now.")
 
         # non-exclusive overlay: WhatsApp outreach (these pids also appear above)
         if SHOW_WHATSAPP:
             wa = open_cases[open_cases["whatsapp"] == 1].copy()
             st.markdown(f"#### 📱 To be reached out on WhatsApp ({len(wa)})")
-            st.caption("PIDs attempted **≥3 times** need to be messaged on WhatsApp. "
-                       "**Overlaps** the queues above; these pids still appear in their "
-                       "primary queue too.")
             if wa.empty:
-                st.caption("Nothing to WhatsApp right now.")
+                st.caption("Nothing here right now.")
             else:
                 wa_cols = ["pid", "enumerator", "status", "callcode", "action_bucket",
                            "total_attempts", "shifts_to_try", "numbers_tried_of_available",
@@ -775,9 +709,8 @@ with tab_action:
     if keep_pids is not None:
         new_cases = new_cases[new_cases["pid"].isin(keep_pids)]
     st.markdown(f"#### 🆕 To be assigned ({len(new_cases)})")
-    st.caption("Eligible sign-ups not yet worked — top priority to assign first, across the day.")
     if new_cases.empty:
-        st.caption("Every recruited respondent has been worked at least once.")
+        st.caption("Nothing to assign.")
     else:
         # Both roster vintages listed: the 2026-08 data-entry names first,
         # then the earlier ones. Only the columns actually on the sheet show.
@@ -786,7 +719,6 @@ with tab_action:
                                "own_phone", "phones_provided", "rec_signup"]
                    if c in new_cases.columns]
         st.dataframe(yesno(new_cases[newcols]), width="stretch", hide_index=True)
-        st.caption("Recruited respondents not yet worked — the pool to assign.")
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
         st.dataframe(subs, width="stretch", hide_index=True)
@@ -805,14 +737,6 @@ with tab_enum:
         # the only codes in those families are 3_SC/3_D and 4_SC/4_D — so the two
         # columns partition the total exactly.
         st.markdown("#### 📋 On the plate now — ACTIVE pids held")
-        st.caption("ACTIVE pids each enumerator **currently holds** (they made the last "
-                   "submission on it). The two columns **add up to the total**.")
-        st.caption("**▶️ resume (4_)** — a logged notification: `4_D` or `4_SC` held partial "
-                   "(partial save on the enumerator's device)  ·  **⏰ follow-up** (resc/drop "
-                   "within next hour or deep in the survey).")
-        st.caption("**🕒 callback times** — when that enumerator's callbacks fall due, "
-                   "earliest first (**⚠ = overdue**; the time alone means today). Held "
-                   "partials and drops carry no scheduled time, so they show nothing here.")
         act = cases[cases["status"].astype(str).str.upper() == "ACTIVE"].copy()
         act = act[act["enumerator"].astype(str).str.strip() != ""]
         if act.empty:
@@ -878,10 +802,6 @@ with tab_enum:
             eff = eff.sort_values("attempts", ascending=False)
             eff = eff.rename(columns={"pids_tried": "pids tried"})
             st.dataframe(eff, width="stretch", hide_index=True)
-            st.caption("Credited to whoever **made the call**, across the whole history "
-                       "(not just pids they hold now). **pids tried** deliberately "
-                       "**overlaps between enumerators** — several people try the same "
-                       "respondent, so this column does not sum to the sample.")
 
 # ============================================================================
 # TAB — PARTIAL SAVES (which tablet is holding each half-finished interview)
@@ -892,17 +812,6 @@ with tab_enum:
 # ============================================================================
 with tab_partial:
     st.subheader("💾 Partial saves")
-    st.caption("A partial save is stored **on the tablet it was taken on** — it can "
-               "only be resumed from that device. Use this to find which tablet is "
-               "holding each half-finished interview, and who to ask for it.")
-    st.caption("**What counts as a partial save:** the pid's **last submission is a "
-               "`4_`** (`4_D` held partial · `4_SC` upcoming reschedule · `4_NA` / "
-               "`4_OF` a further attempt on a held case). This list is what is **still "
-               "outstanding** — the moment anything later is logged against a pid, the "
-               "partial has been resumed or closed and it drops off. A pid that was "
-               "partial-saved earlier in its life but has since moved on does **not** "
-               "appear here; that history lives in `was_partialsaved` on the tracking "
-               "sheet.")
 
     NO_TAB = "⚠️ no tablet id recorded"
     ps = summary_view[summary_view.get("active_partialsave", 0) == 1].copy()
@@ -912,27 +821,13 @@ with tab_partial:
         ps["tab_id"] = NO_TAB
 
     if ps.empty:
-        st.info("**No partial saves currently held.** Nothing is sitting half-finished "
-                "on a tablet — every pid's last submission is something other than a "
-                "`4_`.")
-        _ever = int(pd.to_numeric(summary_view.get("was_partialsaved", 0),
-                                  errors="coerce").fillna(0).sum())
-        if _ever:
-            st.caption(f"({_ever} pid(s) were partial-saved at some point but have since "
-                       "been resumed or closed, so they are not listed here.)")
+        st.info("No partial saves held now.")
     else:
         n_pids = len(ps)
         n_tabs = int(ps["tab_id"].nunique())
         n_lost = int((ps["tab_id"] == NO_TAB).sum())
-        k = st.columns(3)
-        k[0].metric("Partial saves held now", f"{n_pids}")
-        k[1].metric("Tablets holding them", f"{n_tabs}")
-        k[2].metric("No tablet id", f"{n_lost}",
-                    help="Cannot be traced to a device — the tablet id was not recorded.")
-        if n_lost:
-            st.warning(f"⚠️ **{n_lost} partial save(s) carry no tablet id**, so there is "
-                       "no way to tell which device holds them. They still need chasing — "
-                       "start from the enumerator who last submitted.")
+        flag_tiles([(n_pids, "held now", BLUE), (n_tabs, "tablets holding them", BLUE),
+                    (n_lost, "no tablet id", RED)])
 
         # A tablet id that is really a callcode or the pid itself. `rs_tab_id` is a
         # free-text box sitting between two coded questions on the 4_* log, and it
@@ -945,15 +840,9 @@ with tab_partial:
         _bad = ps[_looks_like_cc | _is_the_pid]
         if len(_bad):
             st.warning(
-                f"⚠️ **{len(_bad)} partial save(s) have a tablet id that is not a tablet** "
-                "— a callcode or the pid was typed into the box instead. They cannot be "
-                "traced to a device either; chase the enumerator who last submitted."
-                "\n\n"
+                f"⚠️ **{len(_bad)} with a tablet id that is not a tablet:** "
                 + "  ·  ".join(f"`{p}` → *{t}* ({e})" for p, t, e in
                                zip(_bad["pid"], _bad["tab_id"], _bad["enumerator"])))
-            st.caption("This is a **data-entry** problem, not a dashboard one: `rs_tab_id` "
-                       "on the `4_` log is a free-text box and is being filled with the "
-                       "wrong value. Worth a word with the field team.")
 
         # ---- by tablet -------------------------------------------------------
         st.markdown("#### 📱 By tablet")
@@ -968,8 +857,6 @@ with tab_partial:
         by_tab["which pids"] = by_tab["tablet"].map(
             ps.groupby("tab_id")["pid"].apply(lambda s: ", ".join(sorted(s))))
         st.dataframe(by_tab, width="stretch", hide_index=True)
-        st.caption("**enumerators** = everyone who last submitted on a pid held by that "
-                   "tablet. **last_submission** = the most recent submission across them.")
 
         # ---- one row per partial save ---------------------------------------
         st.markdown("#### 📄 Every partial save")
@@ -982,12 +869,6 @@ with tab_partial:
         st.dataframe(ps[pcols].sort_values(["tab_id", "last_submission_time"],
                                            ascending=[True, False]),
                      width="stretch", hide_index=True)
-        st.caption("**enumerator** and **last_submission_time** are the LAST submission "
-                   "on that pid — which, because a partial save IS the last submission, "
-                   "is the log that put it on that tablet.")
-        st.caption("**last_section** is how far the interview got before it was held "
-                   "(`rs_section` on the `4_` log). **current_callcode** says which kind "
-                   "of hold it is.")
 
 
 # ============================================================================
@@ -1014,22 +895,9 @@ with tab_archive:
     arch["validated"] = ["✔" if (p in _validated or s) else "pending"
                          for p, s in zip(arch["pid"], _sup)]
     st.subheader(f"🗄️ Inactive pids ({len(arch)})")
-    st.caption("**Inactive pids** — completed interviews (callcode `1`) and closed pids "
-               "(callcode starts with `0_`): 0_R refusal · 0_UN ineligible · 0_IN incorrect "
-               "respondent · 0_WN wrong number.")
-    st.caption("**`ineligible_type1`** = respondent is ineligible — under 18 (`d02_check`), "
-               "lives outside the Western Area (`d04_yn`), or had no phone at recruitment. "
-               "**`is_supervisor`** = Yes when a supervisor closed the pid. "
-               "**`validated`** = ✔ once the supervisor has confirmed or corrected it "
-               "in 🛂 Supervisor review (final: a later call will not reopen it), "
-               "*pending* until then.")
-    st.caption("**`was_partialsaved`** here is HISTORY — was this pid ever partial-saved "
-               "on the way to being closed. These pids are closed, so nothing is still "
-               "held on a tablet; what is still outstanding is on the **💾 Partial "
-               "saves** tab.")
-    st.warning("⚠️ **Supervisors:** review this list regularly and make sure these closed "
-               "pids are pulled out of the active calling pile as the days go by — so "
-               "respondents who shouldn't be contacted don't keep getting re-attempted.")
+    if len(arch):
+        flag_tiles([(int((arch["validated"] == "pending").sum()),
+                     "waiting for supervisor validation", ORANGE)])
     if arch.empty:
         st.info("No inactive pids yet.")
     else:
@@ -1059,7 +927,7 @@ with tab_review:
 # ============================================================================
 st.divider()
 with st.expander("🔧 What this page is built from — sources, filters, checks",
-                 expanded=True):
+                 expanded=False):
     _a, _s = meta["attempts"], meta["sample"]
 
     st.markdown("**Reading**")

@@ -91,10 +91,7 @@ def _case_facts(summary, subs, pid):
                    f"{_num(s.get('times_off', 0))} · wrong number "
                    f"{_num(s.get('times_wrongnumber', 0))} · numbers tried "
                    f"{s.get('numbers_tried_of_available', '') or '—'} · first attempt "
-                   f"{str(s.get('first_attempt_time', '') or '—')[:16]}. "
-                   "Last attempted = last real call, not supervisor / dashboard "
-                   "entries. Shifts: A 07:30–09:30 · B 09:30–12:30 · C 12:30–15:30 "
-                   "· D 15:30–17:30 · E 17:30–20:30.")
+                   f"{str(s.get('first_attempt_time', '') or '—')[:16]}")
 
 
 def _observations(subs, pid):
@@ -104,9 +101,6 @@ def _observations(subs, pid):
     with st.expander(f"📂 All observations for {pid} ({len(h)})"):
         st.dataframe(_history(subs, pid, all_columns=True), hide_index=True,
                      width="stretch")
-        st.caption("Oldest first. Grey rows = Communications form (timing / status "
-                   "only, never interview content). Blue italic rows = earlier "
-                   "dashboard entries.")
 
 
 def _save(rows, what):
@@ -151,9 +145,6 @@ def render(summary, subs, open_cases, decisions, dmeta):
             st.warning(f"Decisions log: {dmeta.get('msg')}")
         elif dmeta.get("msg"):
             st.caption(f"Decisions log: {dmeta['msg']}")
-        st.caption("Both lists cover the **whole roster** — the sidebar filters do not "
-                   "apply here, so nothing waiting is hidden. Each save adds a row to "
-                   f"the `{rv.TAB}` tab of the Google Sheet; nothing is ever overwritten.")
     with top_r:
         if unlocked:
             st.markdown(f"🔓 Editing as **{rv.editor_name()}**")
@@ -185,18 +176,12 @@ def render(summary, subs, open_cases, decisions, dmeta):
 
 # -----------------------------------------------------------------------------
 def _validate(vq, summary, subs, can_save):
-    st.markdown("Every case an **enumerator** closed (`0_`) or completed (`1`) that you "
-                "have not validated yet. Your own closures count as validated already. "
-                "**Confirm** or **Correct** makes it final — a later enumerator call "
-                "will not reopen it. **Send back** returns it to the queue it came from, "
-                "with your comment shown to the enumerators.")
     if vq.empty:
         st.info("Nothing waiting for validation.")
         return
     n_flag = int(vq["flag"].ne("").sum())
     if n_flag:
-        st.warning(f"⚠️ {n_flag} closure(s) use a **supervisor-only code** "
-                   "(0_NA / 0_OF / 0_D / 0_SC) on an enumerator's own submission.")
+        st.warning(f"⚠️ {n_flag} closed with a supervisor-only code")
 
     show = vq.sort_values(["flag", "kind", "last_submission_time"],
                           ascending=[False, True, True])
@@ -256,10 +241,6 @@ def _validate(vq, summary, subs, can_save):
 
 # -----------------------------------------------------------------------------
 def _decide(dq, summary, subs, keys, can_save):
-    st.markdown("Open pids in **▶️ To be resumed (partial saved)** and **🔎 To be "
-                "reviewed (hard to reach)**. **Close** ends the case with a `0_` code "
-                "(final). **Keep trying** leaves it in its queue and shows your comment "
-                "to the enumerators.")
     if dq.empty:
         st.info("Nothing in the Resume or Review queues.")
         return
@@ -292,8 +273,6 @@ def _decide(dq, summary, subs, keys, can_save):
 
 # -----------------------------------------------------------------------------
 def _log(decisions):
-    st.markdown(f"The `{rv.TAB}` tab as stored, newest first. The newest row per pid "
-                "is the one that counts; older rows are history.")
     if decisions.empty:
         st.info("No entries yet.")
         return
