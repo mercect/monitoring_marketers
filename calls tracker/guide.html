@@ -325,7 +325,7 @@ footer { color: var(--muted); font-size: 13px; }
           <li>Choose your name in <em>Assigned by</em> (it goes into the log; the list is everyone marked <code>supervisor</code> = 1 on the <code>enumerators</code> tab), then click <strong>Assign</strong>.</li>
         </ol>
         <p>Each assignment is recorded in the <code>decisions</code> tab of the Google Sheet: when (Sierra Leone time), who assigned it, the pid and the enumerator. Assigned pids leave this list. Only first calls are assigned here.</p>
-        <p><strong>Out of order:</strong> if you tick a pid while a lower number in the same list is still waiting, the dashboard says which, and the comment box becomes a required <em>reason</em>. Otherwise the comment is optional. Either way it goes into the log with the assignment.</p>
+        <p><strong>Out of order:</strong> if you tick a pid while a lower number in the same list is still waiting, you are <em>skipping</em>: the dashboard says so in red, names the pid(s) being skipped, and asks for a reason before it saves. The reason goes into the log. Assignments in order need no comment.</p>
       </div>
 
       <div class="panel queue" style="--qc: var(--red)">

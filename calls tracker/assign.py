@@ -11,9 +11,10 @@
 #   - assigned but not called within LATE_MINUTES
 #   - called without being assigned (only after assignments started)
 #   - first called by someone other than the enumerator it was assigned to
-# Every assignment can carry a comment. Assigning out of order (a lower
-# ordering in the same call list still waiting) is allowed, but then the
-# comment is required, as the reason. It goes into the log (sup_comment).
+# Assigning out of order (skipping: a lower ordering in the same call list
+# still waiting) is allowed, but the dashboard says what is being skipped and
+# requires a reason, which goes into the log (sup_comment). In-order
+# assignments carry no comment.
 # -----------------------------------------------------------------------------
 from datetime import datetime, timezone
 
@@ -173,16 +174,16 @@ def assign_panel(table, roster, handed, names, assigners):
     who = st.selectbox("Assigned by", assigners, index=None, key="assign_by",
                        placeholder="Who is assigning (goes into the log)") or ""
     gaps = out_of_order(list(picked["pid"]), roster, handed)
+    # Skipping = ticking a pid while a lower number in the same call list is
+    # still waiting. Only then: say what is being skipped and REQUIRE a reason.
+    # An in-order assignment needs no comment, so no box is shown.
+    reason = ""
     if gaps:
-        st.warning("⚠️ Out of order: " + " · ".join(
-            f"**{p}** while {', '.join(g[:3])}{' …' if len(g) > 3 else ''} still waiting"
-            for p, g in gaps.items()))
-    # Always there: an optional note on the assignment, REQUIRED (and labelled
-    # so) when it is out of order. Saved with every ticked pid.
-    reason = st.text_area(
-        "Reason for assigning out of order (required)" if gaps else "Comment (optional)",
-        key="assign_reason",
-        placeholder="Why these pids are handed out now, or anything worth recording")
+        st.error("⚠️ **You are skipping** — " + " · ".join(
+            f"assigning **{p}** while {', '.join(g[:3])}{' …' if len(g) > 3 else ''} "
+            f"{'is' if len(g) == 1 else 'are'} still waiting" for p, g in gaps.items())
+            + ". Write why to continue, or tick the waiting one(s) first.")
+        reason = st.text_area("Reason for skipping (required)", key="assign_reason")
     missing = picked["assign_to"].fillna("").astype(str).str.strip().eq("")
     ready = (not problem and who.strip() and not missing.any()
              and (not gaps or reason.strip()))
@@ -193,7 +194,8 @@ def assign_panel(table, roster, handed, names, assigners):
     if st.button(f"📨 Assign {len(picked)} pid(s)", disabled=not ready, type="primary"):
         rows = [{"sup_time": rv.now_text(), "sup_by": who.strip(), "pid": r["pid"],
                  "sup_type": "assignment", "sup_action": "assigned",
-                 "sup_comment": reason.strip(),
+                 # the reason belongs to the pids that skip, not to the others
+                 "sup_comment": reason.strip() if r["pid"] in gaps else "",
                  "assigned_to": r["assign_to"]} for _, r in picked.iterrows()]
         try:
             rv.append_decisions(rows)
