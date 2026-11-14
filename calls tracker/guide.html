@@ -287,28 +287,11 @@ footer { color: var(--muted); font-size: 13px; }
         </table></div>
       </div>
 
-      <div class="panel queue" style="--qc: var(--orange)">
-        <h3>📵 To keep calling</h3>
-        <div class="meta">Codes <code>2_IN</code> <code>2_NA</code> <code>2_OF</code> <code>2_WN</code></div>
-        <p>No answer or phone off, or a wrong number or wrong person with other numbers still to try. The list starts with the fewest attempts; within the same number of attempts, it follows the <strong>call-list order</strong> (<code>assigned_day</code>, then <code>ordering</code>). Take the top row.</p>
-        <div class="flags"><div class="flag orange"><b>12</b><span>1 attempt only</span></div></div>
-        <p>After <code>ordering</code> come the shift windows not tried yet (<code>shifts_to_try</code>) and whether the respondent ever picked up (<code>ever_picked_up</code>). Then the totals: all calls (<code>total_attempts</code>) and how many ended in no answer (<code>times_noanswer</code>), phone off (<code>times_off</code>), a reschedule (<code>times_rescheduled</code>) or a drop (<code>times_dropped</code>). Someone who has picked up before but keeps rescheduling needs a different approach from someone whose phone is always off.</p>
-        <p>The last three columns describe the last call: <code>last_callcode</code>, <code>last_enumerator</code> and <code>last_comment</code>.</p>
-        <p><code>numbers_wrong</code> is the most numbers any single call found wrong. The form counts per call, not in total, so this never counts the same wrong number twice.</p>
-      </div>
-
       <div class="panel queue" style="--qc: var(--blue)">
         <h3>▶️ To be resumed (partial saved)</h3>
         <div class="meta">Last submission is a <code>4_</code>, plus <code>3_D</code></div>
-        <p>A half-finished interview is held on a tablet. Resume it from <strong>that tablet</strong>; if that is not possible, hand the pid to another enumerator. A blank <code>callback_due</code> is normal on a <code>4_D</code>, <code>4_NA</code> or <code>4_OF</code> hold. A pid leaves this list as soon as anything later is logged against it.</p>
+        <p>A half-finished interview is held on a tablet. Resume it from <strong>that tablet</strong>; if that is not possible, hand the pid to another enumerator. A pid leaves this list as soon as anything later is logged against it. <code>active_partialsave</code> says whether the partial is still held on a tablet (a <code>3_D</code> drop is listed too, but holds nothing). <code>comments</code> is the reason given, then the final comment, and <code>last_contact_date</code> says <em>never reached</em> when nobody has spoken to the respondent yet.</p>
         <div class="flags"><div class="flag blue"><b>4</b><span>held on a tablet now</span></div><div class="flag red"><b>1</b><span>no tablet id</span></div></div>
-      </div>
-
-      <div class="panel queue" style="--qc: var(--grey)">
-        <h3>🔎 To be reviewed (hard to reach)</h3>
-        <div class="meta">4 or more of the 5 shift windows tried, or more than 8 attempts</div>
-        <p>Open pids worked hard with nothing to show, and still not complete. The supervisor decides whether to keep trying or close them. <code>review_reason</code> says which condition applied. Callbacks never land here.</p>
-        <div class="flags"><div class="flag red"><b>2</b><span>more than 8 attempts</span></div><div class="flag orange"><b>3</b><span>4+ shifts tried</span></div></div>
       </div>
 
       <div class="panel queue" style="--qc: var(--green)">
@@ -333,6 +316,23 @@ footer { color: var(--muted); font-size: 13px; }
         <p>Pids assigned in the dashboard that nobody has called yet, longest waiting first, with who they were given to and how many minutes ago. <strong>Red after 30 minutes:</strong> each enumerator takes one case at a time, so a case should be called well within that.</p>
         <div class="flags"><div class="flag red"><b>1</b><span>not called within 30 min</span></div></div>
       </div>
+      <div class="panel queue" style="--qc: var(--grey)">
+        <h3>🔎 To be reviewed (hard to reach)</h3>
+        <div class="meta">4 or more of the 5 shift windows tried, or more than 8 attempts</div>
+        <p>Open pids worked hard with nothing to show, and still not complete. The supervisor decides whether to keep trying or close them. <code>review_reason</code> says which condition applied. Callbacks never land here. <code>comments</code> is the reason given, then the final comment; <code>last_contact_date</code> says <em>never reached</em> when nobody has spoken to the respondent.</p>
+        <div class="flags"><div class="flag red"><b>2</b><span>more than 8 attempts</span></div><div class="flag orange"><b>3</b><span>4+ shifts tried</span></div></div>
+      </div>
+
+      <div class="panel queue" style="--qc: var(--orange)">
+        <h3>📵 To keep calling</h3>
+        <div class="meta">Codes <code>2_IN</code> <code>2_NA</code> <code>2_OF</code> <code>2_WN</code></div>
+        <p>No answer or phone off, or a wrong number or wrong person with other numbers still to try. The list starts with the fewest attempts; within the same number of attempts, it follows the <strong>call-list order</strong> (<code>assigned_day</code>, then <code>ordering</code>). Take the top row.</p>
+        <div class="flags"><div class="flag orange"><b>12</b><span>1 attempt only</span></div></div>
+        <p>After <code>ordering</code> come the shift windows not tried yet (<code>shifts_to_try</code>) and whether the respondent ever picked up (<code>ever_picked_up</code>). Then the totals: all calls (<code>total_attempts</code>) and how many ended in no answer (<code>times_noanswer</code>), phone off (<code>times_off</code>), a reschedule (<code>times_rescheduled</code>) or a drop (<code>times_dropped</code>). Someone who has picked up before but keeps rescheduling needs a different approach from someone whose phone is always off.</p>
+        <p>The last three columns describe the last call: <code>last_callcode</code>, <code>last_enumerator</code> and <code>last_comment</code>.</p>
+        <p><code>numbers_wrong</code> is the most numbers any single call found wrong. The form counts per call, not in total, so this never counts the same wrong number twice.</p>
+      </div>
+
     </section>
 
     <section id="inactive">

@@ -275,11 +275,28 @@ def followup_view(rows):
     out["callback_due"] = due.mask(_blank(due), NO_CALLBACK_TIME)
     by = out.get("callback_by", pd.Series("", index=out.index)).fillna("").astype(str).str.strip()
     out["callback_by"] = by.mask(_blank(by), "enumerator")
-    rsd = out.get("rsd_reason", pd.Series("", index=out.index)).fillna("").astype(str).str.strip()
-    com = out.get("last_comment", pd.Series("", index=out.index)).fillna("").astype(str).str.strip()
-    out["comments"] = [
-        r if (not c or c == r) else c if not r else f"{r} — {c}"
-        for r, c in zip(rsd.replace({"nan": ""}), com.replace({"nan": ""}))]
+    out["comments"] = merged_comments(out)
+    return out
+
+
+def merged_comments(rows):
+    """rsd_reason, then last_comment (the final comment), in one column: only
+    one if the other is empty, once if they are identical. rsd_reason alone is
+    blank on most rows, so it never earns a column of its own."""
+    rsd = rows.get("rsd_reason", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip()
+    com = rows.get("last_comment", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip()
+    return [r if (not c or c == r) else c if not r else f"{r} — {c}"
+            for r, c in zip(rsd.replace({"nan": ""}), com.replace({"nan": ""}))]
+
+
+def review_resume_view(rows):
+    """Display columns for 🔎 To be reviewed and ▶️ To be resumed: comments
+    merged, and "never reached" where nobody has spoken to the respondent yet
+    (a blank last_contact_date looked like missing data)."""
+    out = rows.copy()
+    out["comments"] = merged_comments(out)
+    lc = out.get("last_contact_date", pd.Series("", index=out.index)).fillna("").astype(str).str.strip()
+    out["last_contact_date"] = lc.mask(lc.isin(["", "nan", "NaT"]), "never reached")
     return out
 
 
@@ -804,21 +821,26 @@ with tab_action:
             # without these the enumerator could see it was held but not when it
             # was promised. Blank for a 4_D / 4_NA / 4_OF hold, which carries no
             # scheduled time - see the caption under this queue.
-            "Resume":       ["pid", "enumerator", "status", "callcode",
-                             "callback_when", "callback_due",
-                             "total_attempts", "days_open", "last_contact_date",
-                             "last_section", "tab_id", "active_partialsave",
-                             "times_rescheduled", "times_dropped", "times_noanswer",
-                             "times_off", "rsd_reason", "shifts_to_try", "last_comment"],
-            "Review":       ["pid", "enumerator", "status", "callcode",
-                             "total_attempts", "days_open", "last_contact_date",
-                             "review_reason", "callback_when", "active_partialsave",
+            # Revised: no status (always ACTIVE), no callback_when / callback_due
+            # (a hold or drop carries no appointment, so they were always blank),
+            # rsd_reason + last_comment merged into comments.
+            "Resume":       ["pid", "callcode", "active_partialsave", "tab_id",
+                             "last_section", "total_attempts", "times_dropped",
+                             "times_rescheduled", "times_noanswer", "times_off",
+                             "shifts_to_try", "days_open", "last_contact_date",
+                             "last_submission_time", "enumerator", "comments"],
+            # Revised: no status (the callcode says it), no callback_when (callbacks
+            # never come here, so always blank), no active_partialsave (held
+            # partials go to Resume, so always No), comments merged.
+            "Review":       ["pid", "callcode", "review_reason", "total_attempts",
                              "shifts_to_try", "numbers_tried_of_available",
-                             "rsd_reason", "last_comment"],
+                             "days_open", "last_contact_date",
+                             "last_submission_time", "enumerator", "comments"],
         }
 
-        # Open cases laid out down the page, one section per queue.
-        for key, label in BUCKETS:
+        # One queue section: heading, flags, table. A function so 🔎 To be
+        # reviewed and 📵 To keep calling can be drawn at the bottom (below).
+        def _render_queue(key, label):
             # Resume reads its non-exclusive overlay (held partials + 3_D);
             # every other queue reads the exclusive bucket. Callbacks are never
             # escalated, so the Callback bucket is already the whole list.
@@ -846,7 +868,7 @@ with tab_action:
                     ["total_attempts", "_rec", "_day", "_ord", "shifts_covered_n", "_last"],
                     na_position="last").drop(columns=["_last", "_rec", "_day", "_ord"])
             else:
-                rows = rows.sort_values("_active_first", ascending=False)
+                rows = review_resume_view(rows.sort_values("_active_first", ascending=False))
             # The supervisor's note (Supervisor review: keep trying / sent back)
             # sits right after the pid, so the enumerator reads it before
             # dialling. Only shown when some pid in this queue has one.
@@ -865,7 +887,7 @@ with tab_action:
             # columns are trimmed, since some flags read columns not shown.
             _flags = queue_flags(key, rows, _red)
             rows = rows[_cols]
-            if key == "Keep calling":
+            if key in ("Keep calling", "Review", "Resume"):
                 rows = rows.rename(columns={"callcode": "last_callcode",
                                             "enumerator": "last_enumerator"})
             st.markdown(f"#### {label} ({len(rows)})")
@@ -875,6 +897,13 @@ with tab_action:
                              width="stretch", hide_index=True)
             else:
                 st.caption("Nothing here right now.")
+
+        # Open cases laid out down the page, one section per queue. Review and
+        # Keep calling are left out here: they close the tab, after To be
+        # assigned and Assigned, not called yet.
+        for key, label in BUCKETS:
+            if key not in ("Keep calling", "Review"):
+                _render_queue(key, label)
 
         # non-exclusive overlay: WhatsApp outreach (these pids also appear above)
         if SHOW_WHATSAPP:
@@ -950,6 +979,11 @@ with tab_action:
                   if c in _w.columns]
         st.dataframe(style_rows(_w[_wcols], red=_w["minutes_waiting"] > assign.LATE_MINUTES),
                      width="stretch", hide_index=True)
+
+    # 🔎 To be reviewed, then 📵 To keep calling: the last queues on the page.
+    if not cases.empty:
+        _render_queue("Review", "🔎 To be reviewed (hard to reach)")
+        _render_queue("Keep calling", "📵 To keep calling")
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
         st.dataframe(subs, width="stretch", hide_index=True)
