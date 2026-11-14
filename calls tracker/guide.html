@@ -319,7 +319,7 @@ footer { color: var(--muted); font-size: 13px; }
       <div class="panel queue" style="--qc: var(--grey)">
         <h3>🔎 To be reviewed (hard to reach)</h3>
         <div class="meta">4 or more of the 5 shift windows tried, or more than 8 attempts</div>
-        <p>Open pids worked hard with nothing to show, and still not complete. The supervisor decides whether to keep trying or close them. <code>review_reason</code> says which condition applied. Callbacks never land here. <code>comments</code> is the reason given, then the final comment; <code>last_contact_date</code> says <em>never reached</em> when nobody has spoken to the respondent.</p>
+        <p>Open pids worked hard with nothing to show, and still not complete. The supervisor decides whether to keep trying or close them. Callbacks never land here. The table shows the effort so far: attempts, whether the respondent ever picked up, and how many calls dropped, were rescheduled, went unanswered or found the phone off. <code>comments</code> is the reason given, then the final comment; <code>last_contact_date</code> says <em>never reached</em> when nobody has spoken to the respondent.</p>
         <div class="flags"><div class="flag red"><b>2</b><span>more than 8 attempts</span></div><div class="flag orange"><b>3</b><span>4+ shifts tried</span></div></div>
       </div>
 
@@ -394,7 +394,8 @@ footer { color: var(--muted); font-size: 13px; }
       <p>To clear a backlog, tick several rows and use <strong>Confirm selected</strong>.</p>
 
       <h3>Decide open cases</h3>
-      <p>The <em>To be resumed</em> and <em>To be reviewed</em> queues.</p>
+      <p>The <em>To be resumed</em> and <em>To be reviewed</em> queues, plus any open pid whose comments <strong>say the case is closed</strong> ("This is a close case", "closed by supervisor") although it was logged with an open code such as <code>3_D</code>. Those are marked 💬 <em>says closed</em>, and the <em>Show</em> filter lists only them.</p>
+      <p><strong>Close several at once:</strong> tick the pids, choose one <code>0_</code> code, write one comment, and click <em>Close selected</em>. Each pid gets its own row in the log.</p>
       <div class="tablebox"><table>
         <thead><tr><th>Action</th><th>Result</th></tr></thead>
         <tbody>
