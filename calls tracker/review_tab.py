@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 
 import review as rv
+import column_help as ch
 
 FLASH = "_review_flash"
 HISTORY_COLS = ["endtime", "enum_name", "survey_type", "callcode", "last_section",
@@ -111,7 +112,7 @@ def _observations(subs, pid):
     every other column that has a value on at least one of its rows."""
     h = subs[subs["pid"].astype(str).str.strip() == pid]
     with st.expander(f"📂 All observations for {pid} ({len(h)})"):
-        st.dataframe(_history(subs, pid, all_columns=True), hide_index=True,
+        ch.dataframe(_history(subs, pid, all_columns=True), hide_index=True,
                      width="stretch")
 
 
@@ -216,7 +217,7 @@ def _validate(vq, summary, subs, can_save):
     elif kind_filter.startswith("Completes"):
         table = table[table["kind"] == "complete"]
 
-    edited = st.data_editor(
+    edited = ch.data_editor(
         table, hide_index=True, width="stretch", key=f"review_vtable_{kind_filter}",
         disabled=[c for c in table.columns if c != "select"],
         column_config={"select": st.column_config.CheckboxColumn("✔", width="small")})
@@ -275,7 +276,7 @@ def _decide(dq, summary, subs, keys, can_save):
                         "last_comment", "supervisor_note"] if c in view.columns]
     table = view[cols].reset_index(drop=True)
     table.insert(0, "select", False)
-    edited = st.data_editor(
+    edited = ch.data_editor(
         table, hide_index=True, width="stretch", key=f"review_dtable_{only}",
         disabled=[c for c in table.columns if c != "select"],
         column_config={"select": st.column_config.CheckboxColumn("✔", width="small")})
@@ -323,5 +324,5 @@ def _log(decisions):
     if decisions.empty:
         st.info("No entries yet.")
         return
-    st.dataframe(decisions.sort_values("sup_time", ascending=False),
+    ch.dataframe(decisions.sort_values("sup_time", ascending=False),
                  hide_index=True, width="stretch")

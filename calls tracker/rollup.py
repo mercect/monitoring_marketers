@@ -578,7 +578,9 @@ def rollup(submissions: pd.DataFrame, now=None) -> pd.DataFrame:
             "attempts_total": attempts,
             "ever_picked_up": int(ever_picked),
             "resume_rounds": resume_rounds,
-            "last_contact_date": last_contact.date().isoformat() if pd.notna(last_contact) else "",
+            # Date AND time, in the same format as last_submission_time, so the two
+            # can be compared at a glance (the name is kept for continuity).
+            "last_contact_date": last_contact.strftime("%Y-%m-%d %H:%M") if pd.notna(last_contact) else "",
             "days_open": days_open,
             "is_correction": int(latest.get("is_supervisor_closure", 0) in (1, "1", "1.0", 1.0)),
             "action_bucket": bucket,

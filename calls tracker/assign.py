@@ -22,6 +22,7 @@ import pandas as pd
 import streamlit as st
 
 import review as rv
+import column_help as ch
 from calllist import with_list_order
 
 LATE_MINUTES = 30          # assigned, and no call within this many minutes
@@ -141,7 +142,7 @@ def assign_panel(table, roster, handed, names, assigners):
     show = table.copy()
     show.insert(0, "assign_to", "")
     show.insert(0, "assign", False)
-    edited = st.data_editor(
+    edited = ch.data_editor(
         show, hide_index=True, width="stretch",
         key=f"assign_editor_{st.session_state['assign_round']}",
         disabled=[c for c in show.columns if c not in ("assign", "assign_to")],

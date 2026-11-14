@@ -33,6 +33,7 @@ from rollup import (OPEN_STATUSES, effort_by_enumerator, summary_kpis,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME,
                     is_attempt_row, is_contact_row, _to_dt)
 import assign
+import column_help as ch
 import enumerators
 from calllist import assigned_day_number, with_list_order
 import review
@@ -666,13 +667,13 @@ with tab_summary:
         st.subheader("✅ Nothing to fix")
     if len(_rc):
         st.markdown(f"**Called again after completing ({len(_rc)})**")
-        st.dataframe(_rc[[c for c in ["pid", "route_recruited", "enumerator",
+        ch.dataframe(_rc[[c for c in ["pid", "route_recruited", "enumerator",
                                       "current_callcode", "total_attempts",
                                       "last_submission_time"] if c in _rc.columns]],
                      width="stretch", hide_index=True)
     if len(_ac):
         st.markdown(f"**Called after a supervisor closed them ({len(_ac)})**")
-        st.dataframe(_ac[[c for c in ["pid", "route_recruited", "enumerator",
+        ch.dataframe(_ac[[c for c in ["pid", "route_recruited", "enumerator",
                                       "current_callcode", "calls_after_close",
                                       "last_submission_time"] if c in _ac.columns]],
                      width="stretch", hide_index=True)
@@ -681,14 +682,14 @@ with tab_summary:
     if len(_un):
         st.markdown(f"**Called without being assigned ({len(_un)})**")
         _u = _un.assign(first_call_at=pd.to_datetime(_un["first_call_at"]).dt.strftime("%d %b %H:%M"))
-        st.dataframe(_u.rename(columns={"first_caller": "called_by"}), width="stretch",
+        ch.dataframe(_u.rename(columns={"first_caller": "called_by"}), width="stretch",
                      hide_index=True)
     _ot = _asg_checks["other"]
     if len(_ot):
         st.markdown(f"**Called by someone other than assigned ({len(_ot)})**")
         _o = _ot.assign(first_call_at=pd.to_datetime(_ot["first_call_at"]).dt.strftime("%d %b %H:%M"),
                         assigned_at=pd.to_datetime(_ot["assigned_at"]).dt.strftime("%d %b %H:%M"))
-        st.dataframe(_o[["pid", "assigned_to", "first_caller", "assigned_at", "first_call_at"]]
+        ch.dataframe(_o[["pid", "assigned_to", "first_caller", "assigned_at", "first_call_at"]]
                      .rename(columns={"first_caller": "called_by"}), width="stretch",
                      hide_index=True)
 
@@ -703,7 +704,7 @@ with tab_summary:
                 (_pace["reached"], "respondents reached", BLUE),
                 (_pace["completed"], "interviews completed", GREEN)])
     if len(_per):
-        st.dataframe(_per, width="stretch", hide_index=True)
+        ch.dataframe(_per, width="stretch", hide_index=True)
 
     # ---- 4. PROGRESS: how far through the sample --------------------------------
     st.divider()
@@ -753,7 +754,7 @@ with tab_track:
     blank_cols = [c for c in disp.columns if c not in keep_unassigned]
     disp[blank_cols] = disp[blank_cols].astype(object)
     disp.loc[tracking["ever_attempted"] == 0, blank_cols] = ""
-    st.dataframe(yesno(disp), width="stretch", hide_index=True)
+    ch.dataframe(yesno(disp), width="stretch", hide_index=True)
 
 # ============================================================================
 # TAB 2 — ACTION QUEUES (enumerator view: what to do now, per open case)
@@ -897,7 +898,7 @@ with tab_action:
             st.markdown(f"#### {label} ({len(rows)})")
             if len(rows):
                 flag_tiles(_flags)
-                st.dataframe(style_overdue(yesno(rows), mask=_red),
+                ch.dataframe(style_overdue(yesno(rows), mask=_red),
                              width="stretch", hide_index=True)
             else:
                 st.caption("Nothing here right now.")
@@ -919,7 +920,7 @@ with tab_action:
                 wa_cols = ["assigned_day", "pid", "enumerator", "status", "callcode", "action_bucket",
                            "total_attempts", "shifts_to_try", "numbers_tried_of_available",
                            "last_comment"]
-                st.dataframe(yesno(wa[[c for c in wa_cols if c in wa.columns]]),
+                ch.dataframe(yesno(wa[[c for c in wa_cols if c in wa.columns]]),
                              width="stretch", hide_index=True)
 
     # Not yet assigned — recruited but never worked. Built from `summary`, so it
@@ -981,7 +982,7 @@ with tab_action:
         _wcols = [c for c in ["assigned_day", "pid", "ordering", "assigned_to",
                               "assigned_at", "minutes_waiting", "assigned_by", "reason"]
                   if c in _w.columns]
-        st.dataframe(style_rows(_w[_wcols], red=_w["minutes_waiting"] > assign.LATE_MINUTES),
+        ch.dataframe(style_rows(_w[_wcols], red=_w["minutes_waiting"] > assign.LATE_MINUTES),
                      width="stretch", hide_index=True)
 
     # 🔎 To be reviewed, then 📵 To keep calling: the last queues on the page.
@@ -990,7 +991,7 @@ with tab_action:
         _render_queue("Keep calling", "📵 To keep calling")
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
-        st.dataframe(subs, width="stretch", hide_index=True)
+        ch.dataframe(subs, width="stretch", hide_index=True)
 
 # ============================================================================
 # TAB 3 — BY ENUMERATOR (what's on each plate now + historic effort)
@@ -1057,7 +1058,7 @@ with tab_enum:
             plate = plate.rename(columns={
                 "active": "ACTIVE pids", "rs": "▶️ resume (4_)",
                 "hd": "⏰ follow-up (3_SC / 3_D)", "cbt": "🕒 callback times"})
-            st.dataframe(plate, width="stretch", hide_index=True)
+            ch.dataframe(plate, width="stretch", hide_index=True)
 
         # ---- B. Historic effort ----------------------------------------------
         # Counted from the submissions, NOT the case rows: the case-level
@@ -1070,7 +1071,7 @@ with tab_enum:
         else:
             eff = eff.sort_values("attempts", ascending=False)
             eff = eff.rename(columns={"pids_tried": "pids tried"})
-            st.dataframe(eff, width="stretch", hide_index=True)
+            ch.dataframe(eff, width="stretch", hide_index=True)
 
 # ============================================================================
 # TAB — PARTIAL SAVES (which tablet is holding each half-finished interview)
@@ -1125,7 +1126,7 @@ with tab_partial:
                     .rename(columns={"tab_id": "tablet"}))
         by_tab["which pids"] = by_tab["tablet"].map(
             ps.groupby("tab_id")["pid"].apply(lambda s: ", ".join(sorted(s))))
-        st.dataframe(by_tab, width="stretch", hide_index=True)
+        ch.dataframe(by_tab, width="stretch", hide_index=True)
 
         # ---- one row per partial save ---------------------------------------
         st.markdown("#### 📄 Every partial save")
@@ -1135,7 +1136,7 @@ with tab_partial:
                              "last_section", "total_attempts", "days_open",
                              "route_recruited", "last_comment"]
                  if c in ps.columns]
-        st.dataframe(ps[pcols].sort_values(["tab_id", "last_submission_time"],
+        ch.dataframe(ps[pcols].sort_values(["tab_id", "last_submission_time"],
                                            ascending=[True, False]),
                      width="stretch", hide_index=True)
 
@@ -1177,7 +1178,7 @@ with tab_archive:
         if route_col:
             base.insert(2, route_col)
         acols = [c for c in base if c in arch.columns]
-        st.dataframe(yesno(arch[acols]), width="stretch", hide_index=True)
+        ch.dataframe(yesno(arch[acols]), width="stretch", hide_index=True)
 
 # ============================================================================
 # TAB 7 — SUPERVISOR REVIEW (validate closures, decide hard cases) — review_tab.py
@@ -1212,7 +1213,7 @@ with st.expander("🔧 What this page is built from — sources, filters, checks
     _a, _s = meta["attempts"], meta["sample"]
 
     st.markdown("**Reading**")
-    st.dataframe(pd.DataFrame([
+    ch.dataframe(pd.DataFrame([
         {"what": "Call attempts", "origin": _a["origin"], "tab": _a["tab"],
          "gid": _a["gid"], "rows": _a["rows"], "read at": _a["read"]},
         {"what": "Roster (data entry)", "origin": _s["origin"], "tab": _s["tab"],
@@ -1252,7 +1253,7 @@ with st.expander("🔧 What this page is built from — sources, filters, checks
                       "in the dashboard?": "❌ no — ⚠️ check the data entry tab"})
     _rows.append({"phone_sample_status": "TOTAL recruited", "pids": n_full,
                   "in the dashboard?": ""})
-    st.dataframe(pd.DataFrame(_rows), width="stretch", hide_index=True)
+    ch.dataframe(pd.DataFrame(_rows), width="stretch", hide_index=True)
     st.caption("Every figure on this page is denominated on the **Eligible - signed up** "
                "pool. Refusals and ineligibles cannot be called, so they are excluded — "
                "they are counted here so the three add back up to everyone recruited.")
@@ -1263,13 +1264,13 @@ with st.expander("🔧 What this page is built from — sources, filters, checks
         _why = recruit_exclusions(
             summary_full[_status == "Not eligible"], stage=1).sum()
         _why = _why[_why > 0].sort_values(ascending=False)
-        st.dataframe(pd.DataFrame({"determinant": _why.index, "pids": _why.values}),
+        ch.dataframe(pd.DataFrame({"determinant": _why.index, "pids": _why.values}),
                      width="stretch", hide_index=True)
 
     st.markdown("**Rows excluded from every count**")
     _strays = int(pd.to_numeric(summary.get("calls_after_complete", 0),
                                 errors="coerce").fillna(0).sum())
-    st.dataframe(pd.DataFrame([
+    ch.dataframe(pd.DataFrame([
         {"excluded": "Test submissions (enum_name = Testing)", "rows": _a["dropped_test"]},
         {"excluded": "Calls logged after the pid had completed", "rows": _strays},
         {"excluded": "Attempts on pids with no roster row", "rows": n_offroster_cases},
@@ -1296,7 +1297,7 @@ with st.expander("🔧 What this page is built from — sources, filters, checks
                                                     list(_unknown.items())[:8])
                      + (" …" if len(_unknown) > 8 else ""))},
     ]
-    st.dataframe(pd.DataFrame(_checks), width="stretch", hide_index=True)
+    ch.dataframe(pd.DataFrame(_checks), width="stretch", hide_index=True)
 
     st.caption(f"In view now: **{len(summary_view)} pids**, **{len(cases)} cases**, "
                f"**{len(subs)} attempt rows** (after any sidebar filters). "
