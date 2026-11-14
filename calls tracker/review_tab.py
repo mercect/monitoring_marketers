@@ -181,8 +181,14 @@ def render(summary, subs, open_cases, decisions, dmeta):
                    for r, b, c in zip(dq.get("resume_queue", 0), dq["action_bucket"],
                                       dq["says_closed"])]
 
+    # Any closed pid can be put back to work, except a completed interview.
+    _st = summary["current_status"].astype(str).str.upper()
+    _done = pd.to_numeric(summary.get("is_complete", 0), errors="coerce").fillna(0) == 1
+    closed = summary[(_st == "INACTIVE") & ~_done].copy()
+
     section = st.radio("Section", [f"✔ Validate closures ({len(vq)})",
                                    f"⚖ Decide open cases ({len(dq)})",
+                                   f"🔁 Reopen a closed case ({len(closed)})",
                                    f"📜 Log ({len(decisions)})"],
                        horizontal=True, label_visibility="collapsed", key="review_section")
 
@@ -190,6 +196,8 @@ def render(summary, subs, open_cases, decisions, dmeta):
         _validate(vq, summary, subs, can_save)
     elif section.startswith("⚖"):
         _decide(dq, summary, subs, keys, can_save)
+    elif section.startswith("🔁"):
+        _reopen(closed, summary, subs, keys, can_save)
     else:
         _log(decisions)
 
@@ -317,6 +325,33 @@ def _decide(dq, summary, subs, keys, can_save):
         act = "closed" if action == "Close" else "keep_trying"
         _save([_entry(pid, "decision", act, code, comment, keys.get(pid, ""))],
               f"{pid} ({act})")
+
+
+# -----------------------------------------------------------------------------
+def _reopen(closed, summary, subs, keys, can_save):
+    """Put a closed pid back to work: validated or not, closed by an
+    enumerator or a supervisor. Not completes. It then appears first in Active
+    pids, under To be revised — Data Team checked, with the reason as the note,
+    until someone calls it."""
+    if closed.empty:
+        st.info("No closed pids to reopen.")
+        return
+    labels = {f"{p} · {c} · {e}": p for p, c, e in
+              zip(closed["pid"], closed["current_callcode"], closed.get("enumerator", ""))}
+    choice = st.selectbox("Pid", list(labels), index=None, key="review_rpid",
+                          placeholder="Type or choose a closed pid")
+    if not choice:
+        return
+    pid = labels[choice]
+    _case_facts(summary, subs, pid)
+    _observations(subs, pid)
+    comment = st.text_area("Reason for reopening (required, shown to the enumerators)",
+                           key=f"review_rcom_{pid}",
+                           placeholder="What the enumerator should do now")
+    if st.button("🔁 Reopen", key=f"review_rsave_{pid}",
+                 disabled=not can_save or not comment.strip()):
+        _save([_entry(pid, "decision", "reopened", "", comment, keys.get(pid, ""))],
+              f"{pid} (reopened)")
 
 
 # -----------------------------------------------------------------------------

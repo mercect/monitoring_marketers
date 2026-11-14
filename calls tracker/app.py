@@ -390,19 +390,6 @@ def open_with_buckets(cases, summary):
 
 
 # Curated columns for the on-screen Respondent summary (the CSV download keeps all).
-SUMMARY_COLS = [
-    # identity
-    "batch_code", "pid", "route_recruited", "date_recruited",
-    # last attempt (current state)
-    "enumerator", "current_status", "case_state", "last_submission_time", "current_callcode",
-    "last_comment", "rsd_reason", "refuse_why", "is_supervisor", "call_length_min",
-    "last_is_answered", "last_is_incorrect",
-    # history (across all attempts)
-    "total_attempts", "times_pickedup", "times_rescheduled", "times_dropped",
-    "times_refused", "times_wrongnumber", "times_noanswer", "times_off",
-    "times_incorrect", "times_ineligible", "times_othercontact", "times_dk_contact",
-    "numbers_wrong", "numbers_tried_of_available", "shifts_to_try",
-]
 
 
 st.title("📞 Call-Tracking Monitor Dashboard")
@@ -560,10 +547,10 @@ if keep_pids is not None:
 
 # Tab ORDER is set here; the `with tab_*:` bodies further down can stay in any
 # order, Streamlit renders each into its own tab regardless.
-(tab_summary, tab_action, tab_archive, tab_partial, tab_enum, tab_track,
+(tab_summary, tab_action, tab_archive, tab_partial, tab_enum,
  tab_review, tab_guide) = st.tabs(
     ["🧾 Calls summary", "✅ Active pids", "🗄️ Inactive pids",
-     "💾 Partial saves", "👤 By enumerator", "📋 Tracking sheet",
+     "💾 Partial saves", "👤 By enumerator",
      "🛂 Supervisor review", "📖 Guide"])
 
 # ============================================================================
@@ -742,21 +729,6 @@ with tab_summary:
 
 
 # ============================================================================
-# TAB — TRACKING SHEET (one row per respondent, full detail)
-# ============================================================================
-with tab_track:
-    tracking = summary_view.sort_values("last_submission_time", ascending=False)
-    disp_cols = [c for c in SUMMARY_COLS if c in tracking.columns]
-    disp = tracking[disp_cols].copy()
-    # not-yet-assigned cases have no attempts — blank everything but identity so the
-    # table isn't a wall of zeros.
-    keep_unassigned = {"batch_code", "pid", "route_recruited", "date_recruited", "case_state"}
-    blank_cols = [c for c in disp.columns if c not in keep_unassigned]
-    disp[blank_cols] = disp[blank_cols].astype(object)
-    disp.loc[tracking["ever_attempted"] == 0, blank_cols] = ""
-    ch.dataframe(yesno(disp), width="stretch", hide_index=True)
-
-# ============================================================================
 # TAB 2 — ACTION QUEUES (enumerator view: what to do now, per open case)
 # ============================================================================
 with tab_action:
@@ -776,6 +748,44 @@ with tab_action:
                    "D 15:30–17:30 · E 17:30–20:30")
 
         open_cases = open_with_buckets(cases, summary)   # shared with the monitoring summary
+
+        # ---- 🔁 To be revised — Data Team checked -----------------------------
+        # Cases the supervisor sent back or reopened in Supervisor review, that
+        # nobody has called since. First on the page: a direct instruction. The
+        # first call afterwards moves the pid back into its normal queue; while
+        # it waits here it is left out of the other queues, so nobody calls it
+        # twice.
+        # Whole roster, whatever the sidebar shows: a supervisor's instruction
+        # must not be hidden by the batch filter.
+        _open_all = open_with_buckets(cases_roster, summary)
+        _react = review.reactivated(decisions, subs, assign.utc_now())
+        _react = _react[_react["pid"].isin(_open_all["pid"])]
+        st.markdown(f"#### 🔁 To be revised — Data Team checked ({len(_react)})")
+        if _react.empty:
+            st.caption("Nothing here right now.")
+        else:
+            _rv = _react.merge(_open_all[[c for c in ["pid", "assigned_day", "shifts_to_try",
+                                                      "total_attempts"]
+                                          if c in _open_all.columns]], on="pid", how="left")
+            # The last REAL call (who, and its code): the latest row is the
+            # supervisor's own reopen entry, which says neither.
+            _calls = subs[~review._is_sup(subs)].copy()
+            _calls["_t"] = pd.to_datetime(_calls.get("endtime"), errors="coerce", utc=True,
+                                          format="ISO8601")
+            _last = (_calls.sort_values("_t").groupby("pid").tail(1)
+                     .set_index("pid")[["callcode", "enum_name"]])
+            _rv["callcode"] = _rv["pid"].map(_last["callcode"]).fillna("")
+            _rv["enumerator"] = _rv["pid"].map(_last["enum_name"]).fillna("")
+            _rv["reactivated_at"] = pd.to_datetime(_rv["reactivated_at"]).dt.strftime("%Y-%m-%d %H:%M")
+            _rv["minutes_waiting"] = _rv["minutes"].astype("Int64")
+            _rv = _rv.sort_values("minutes_waiting", ascending=False)
+            _rv = _rv.rename(columns={"callcode": "last_callcode", "enumerator": "last_enumerator"})
+            _rcols = [c for c in ["assigned_day", "pid", "supervisor_note", "reactivated_at",
+                                  "reactivated_by", "minutes_waiting", "shifts_to_try",
+                                  "total_attempts", "last_callcode", "last_enumerator"]
+                      if c in _rv.columns]
+            ch.dataframe(_rv[_rcols], width="stretch", hide_index=True)
+        open_cases = open_cases[~open_cases["pid"].isin(_react["pid"])]
 
         BUCKETS = [
             ("Callback", "⏰ To be followed up"),
@@ -1178,7 +1188,29 @@ with tab_archive:
         if route_col:
             base.insert(2, route_col)
         acols = [c for c in base if c in arch.columns]
-        ch.dataframe(yesno(arch[acols]), width="stretch", hide_index=True)
+        # One section per way of closing, most common outcome first. A pid
+        # that completed counts as completed even if rung again afterwards
+        # (is_complete), whatever its last callcode says.
+        _cc = arch["callcode"].astype(str).str.strip()
+        _done = pd.to_numeric(arch.get("is_complete", 0), errors="coerce").fillna(0) == 1
+        _kind = _cc.where(~_done, "1")
+        INACTIVE_TYPES = [("1", "✅ Completed"), ("0_R", "Refusal (0_R)"),
+                          ("0_UN", "Ineligible (0_UN)"),
+                          ("0_IN", "Incorrect respondent (0_IN)"),
+                          ("0_WN", "Wrong number (0_WN)"), ("0_OC", "Other contact (0_OC)"),
+                          ("0_NA", "No answer — supervisor (0_NA)"),
+                          ("0_OF", "Phone off — supervisor (0_OF)"),
+                          ("0_D", "Keeps dropping — supervisor (0_D)"),
+                          ("0_SC", "Keeps rescheduling — supervisor (0_SC)")]
+        _known = {c for c, _ in INACTIVE_TYPES}
+        _groups = INACTIVE_TYPES + [("_other", "Other closure")]
+        for _code, _label in _groups:
+            _mask = (~_kind.isin(_known)) if _code == "_other" else _kind.eq(_code)
+            _g = arch[_mask]
+            if _g.empty:
+                continue
+            st.markdown(f"#### {_label} ({len(_g)})")
+            ch.dataframe(yesno(_g[acols]), width="stretch", hide_index=True)
 
 # ============================================================================
 # TAB 7 — SUPERVISOR REVIEW (validate closures, decide hard cases) — review_tab.py

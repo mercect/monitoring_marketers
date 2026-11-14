@@ -215,6 +215,36 @@ def check_assignments(fails):
     ok("ticking #1 is in order", assign.out_of_order(["p1"], r, {"p2"}) == {})
 
 
+def check_reopen(fails):
+    """review.py: a validated (final) closure that is reopened goes back to its
+    last open state, is listed as reactivated until the next call, and needs
+    validating again if closed afterwards."""
+    import warnings
+    warnings.filterwarnings("ignore", message="No runtime found")
+    from review import (apply_decisions, clean_log, COLUMNS, reactivated, validated_pids)
+
+    def sub(pid, t, cc, key):
+        return dict(pid=pid, endtime=f"2026-11-0{t}T10:00:00.000Z", callcode=cc, KEY=key,
+                    enum_name="E", survey_type="Long Survey")
+    att = pd.DataFrame([sub("A", 1, "2_SC", "a1"), sub("A", 2, "0_WN", "a2")])
+
+    def dec(rows):
+        return clean_log(pd.DataFrame([dict(zip(COLUMNS, r + ("",))) for r in rows]))
+    d = dec([("2026-11-03 08:00:00", "S", "A", "validation", "confirmed", "0_WN", "", "a2"),
+             ("2026-11-04 08:00:00", "S", "A", "decision", "reopened", "", "try again", "a2")])
+    ok = lambda name, cond: None if cond else fails.append(f"[reopen] {name}")
+    s = summarize(frame_from_attempts(apply_decisions(att, d)), apply_decisions(att, d)).set_index("pid")
+    ok("reopened final closure is open again", s.at["A", "current_callcode"] == "2_SC")
+    now = pd.Timestamp("2026-11-04 09:00")
+    r = reactivated(d, apply_decisions(att, d), now)
+    ok("listed as reactivated, 60 min waiting",
+       list(r["pid"]) == ["A"] and int(r["minutes"].iloc[0]) == 60)
+    ok("reopen cancels the earlier validation", "A" not in validated_pids(d))
+    called = pd.concat([att, pd.DataFrame([sub("A", 5, "2_NA", "a5")])], ignore_index=True)
+    ok("a call afterwards takes it off the list",
+       reactivated(d, apply_decisions(called, d), now).empty)
+
+
 def check_baseline(s, fails):
     got = {"rows": len(s), "completed": int((s["is_complete"] == 1).sum()),
            "ever_attempted": int(s["ever_attempted"].sum()),
@@ -264,7 +294,8 @@ def main():
     check_review_rules(fails)
     check_enumerator_names(fails)
     check_assignments(fails)
-    print("supervisor review rules + enumerator names + assignments: checked")
+    check_reopen(fails)
+    print("supervisor review rules + enumerator names + assignments + reopen: checked")
 
     # --- fixture: invariants + baseline + determinism -------------------------
     # The demo fixture is real-data-shaped but synthetic. It is NOT in the git

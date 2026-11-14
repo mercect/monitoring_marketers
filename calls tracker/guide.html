@@ -127,7 +127,6 @@ footer { color: var(--muted); font-size: 13px; }
       <li><a href="#inactive">Inactive pids</a></li>
       <li><a href="#partial">Partial saves</a></li>
       <li><a href="#enumerator">By enumerator</a></li>
-      <li><a href="#tracking">Tracking sheet</a></li>
       <li><a href="#review">Supervisor review</a></li>
     </ol>
   </nav>
@@ -274,6 +273,11 @@ footer { color: var(--muted); font-size: 13px; }
       <p>Every open pid sits in one queue. Work through them from the top. Each table starts with <code>assigned_day</code> (the day-4 or day-5 call list), then the pid. If the supervisor has left a note on a pid, it appears as <code>supervisor_note</code> right after the pid: read it before calling.</p>
 
       <div class="panel queue" style="--qc: var(--red)">
+        <h3>🔁 To be revised — Data Team checked</h3>
+        <p>Cases the supervisor sent back or reopened in Supervisor review. <strong>Call these first</strong>, and read <code>supervisor_note</code>: it says why and what to do. The first call afterwards moves the pid back into its normal queue; while it is listed here it does not appear in the other queues.</p>
+      </div>
+
+      <div class="panel queue" style="--qc: var(--red)">
         <h3>⏰ To be followed up</h3>
         <div class="meta">Codes <code>2_D</code> <code>2_OC</code> <code>2_SC</code> <code>3_SC</code> <code>4_SC</code></div>
         <p>A callback time was agreed, or the call dropped and needs chasing. Overdue callbacks are red and sit at the top, then the soonest due. A callback stays here however many times it has been tried, because a time was promised to the respondent. It never moves to <em>To be reviewed</em>.</p>
@@ -340,7 +344,7 @@ footer { color: var(--muted); font-size: 13px; }
 
     <section id="inactive">
       <h2>🗄️ Inactive pids</h2>
-      <p>Completed interviews and closed pids.</p>
+      <p>Completed interviews and closed pids, <strong>one section per way of closing</strong>: completed, refusal, ineligible, incorrect respondent, wrong number, other contact, then the supervisor closures (no answer, phone off, keeps dropping, keeps rescheduling). Only the sections with pids are shown. A pid that completed is listed under Completed even if it was called again afterwards.</p>
       <div class="flags"><div class="flag orange"><b>16</b><span>waiting for supervisor validation</span></div></div>
       <div class="tablebox"><table>
         <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
@@ -375,10 +379,6 @@ footer { color: var(--muted); font-size: 13px; }
       </ul>
     </section>
 
-    <section id="tracking">
-      <h2>📋 Tracking sheet</h2>
-      <p>One row per respondent. <em>Current state</em> columns come from the most recent submission; <em>history</em> columns add up all submissions. Respondents nobody has called yet show an empty current state.</p>
-    </section>
 
     <section id="review">
       <h2>🛂 Supervisor review</h2>
@@ -406,6 +406,9 @@ footer { color: var(--muted); font-size: 13px; }
           <tr><td><strong>Keep trying</strong></td><td>Leaves it in its queue; the comment appears to the enumerators as a note.</td></tr>
         </tbody>
       </table></div>
+
+      <h3>Reopen a closed case</h3>
+      <p>Any closed pid can be put back to work, validated or not, whoever closed it. Completed interviews cannot be reopened (correct a wrong complete to a <code>0_</code> code first). Choose the pid, write the reason (shown to the enumerators) and click <strong>Reopen</strong>. The case goes back to the state of its last open call and appears first in Active pids, under <em>To be revised — Data Team checked</em>. If it is closed again later, that closure needs validating again.</p>
 
       <h3>Reviewing one pid</h3>
       <ol class="steps">

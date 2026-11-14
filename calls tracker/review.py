@@ -44,11 +44,15 @@ COLUMNS = ["sup_time", "sup_by", "pid", "sup_type", "sup_action",
            "sup_callcode", "sup_comment", "sup_ref_key", "assigned_to"]
 
 TYPES = {"validation": {"confirmed", "corrected", "sent_back"},
-         "decision": {"closed", "keep_trying"},
+         # reopened = any closed case put back to work by the supervisor
+         "decision": {"closed", "keep_trying", "reopened"},
          # a pid handed out for its first call (assign.py); changes no status
          "assignment": {"assigned"}}
 FINAL_VALIDATION = {"confirmed", "corrected"}
-NOTE_ACTIONS = {"sent_back", "keep_trying"}
+NOTE_ACTIONS = {"sent_back", "keep_trying", "reopened"}
+# Entries that put a closed case back to work: listed in "To be revised —
+# Data Team checked" until someone calls the pid again.
+REACTIVATE = {"sent_back", "reopened"}
 
 # The 0_ codes a supervisor can close or correct with.
 CLOSE_CODES = {
@@ -294,7 +298,7 @@ def apply_decisions(subs, decisions):
             row = {"callcode": code, "status": status_for(code)}
             if r.sup_action == "corrected" and complete:
                 row["sup_override"] = "1"       # beats the completion
-        elif r.sup_action == "sent_back":
+        elif r.sup_action in REACTIVATE:
             row = _reopen_state(hist, str(r.sup_ref_key).strip())
         if row is None:
             continue
@@ -351,9 +355,7 @@ def validation_queue(summary, decisions, keys):
     cc = summary["current_callcode"].astype(str).str.strip()
     sup = pd.to_numeric(summary.get("is_supervisor", 0), errors="coerce").fillna(0) == 1
     q = summary[(cc.str.startswith("0_") | cc.eq("1")) & ~sup].copy()
-    lv = latest_per_pid(decisions, "validation")
-    done = set(lv.loc[lv["sup_action"].isin(FINAL_VALIDATION), "pid"]) if len(lv) else set()
-    q = q[~q["pid"].isin(done)]
+    q = q[~q["pid"].isin(validated_pids(decisions))]
     q["ref_key"] = q["pid"].map(keys).fillna("")
     qcc = q["current_callcode"].astype(str).str.strip()
     q["flag"] = ""
@@ -375,7 +377,14 @@ def notes_by_pid(decisions):
 
 
 def validated_pids(decisions):
-    lv = latest_per_pid(decisions, "validation")
+    """Pids whose closure is validated: their newest validation (or reopen)
+    entry is a confirm or a correction. A reopen afterwards cancels it, so a
+    pid closed again after being reopened needs validating again."""
+    if decisions is None or decisions.empty:
+        return set()
+    d = decisions[(decisions["sup_type"] == "validation")
+                  | (decisions["sup_action"] == "reopened")]
+    lv = latest_per_pid(d)
     return set(lv.loc[lv["sup_action"].isin(FINAL_VALIDATION), "pid"]) if len(lv) else set()
 
 
@@ -412,3 +421,29 @@ def editor_unlock_form():
                 st.rerun()
             else:
                 st.error("Wrong editor password.")
+
+
+def reactivated(decisions, subs, now):
+    """Pids put back to work (sent back or reopened) that nobody has called
+    since: pid, reactivated_at, reactivated_by, supervisor_note, minutes. Only
+    the pid's NEWEST entry counts, so closing it again later takes it off."""
+    cols = ["pid", "reactivated_at", "reactivated_by", "supervisor_note", "minutes"]
+    if decisions is None or decisions.empty or subs.empty:
+        return pd.DataFrame(columns=cols)
+    lp = latest_per_pid(decisions[decisions["sup_type"] != "assignment"])
+    lp = lp[lp["sup_action"].isin(REACTIVATE)].copy()
+    if lp.empty:
+        return pd.DataFrame(columns=cols)
+    lp["reactivated_at"] = pd.to_datetime(lp["sup_time"], errors="coerce")
+    calls = subs[~_is_sup(subs)]
+    t = pd.to_datetime(calls.get("endtime", pd.Series("", index=calls.index)), errors="coerce",
+                       utc=True, format="ISO8601").dt.tz_localize(None)
+    last_call = t.groupby(calls["pid"].astype(str).str.strip()).max()
+    lp["_last_call"] = lp["pid"].map(last_call)
+    waiting = lp[lp["_last_call"].isna() | (lp["_last_call"] < lp["reactivated_at"])].copy()
+    waiting["minutes"] = ((now - waiting["reactivated_at"]).dt.total_seconds() // 60)
+    return pd.DataFrame({"pid": waiting["pid"].values,
+                         "reactivated_at": waiting["reactivated_at"].values,
+                         "reactivated_by": waiting["sup_by"].values,
+                         "supervisor_note": waiting["sup_comment"].values,
+                         "minutes": waiting["minutes"].values})[cols]
