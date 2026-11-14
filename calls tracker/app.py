@@ -835,9 +835,9 @@ with tab_action:
             # review_reason or numbers_tried_of_available either.
             # ever_picked_up and the times_* counts as in Resume; the last call
             # (who, and its code) at the end, before the comments.
-            "Review":       ["pid", "total_attempts", "ever_picked_up",
+            "Review":       ["pid", "shifts_to_try", "total_attempts", "ever_picked_up",
                              "times_dropped", "times_rescheduled", "times_noanswer",
-                             "times_off", "shifts_to_try", "days_open",
+                             "times_off", "days_open",
                              "last_contact_date", "last_submission_time",
                              "enumerator", "callcode", "comments"],
         }
