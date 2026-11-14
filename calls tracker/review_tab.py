@@ -31,6 +31,11 @@ def says_closed(open_cases):
     return text.str.contains(r"(?i)\bclosed?\s+case\b|\bcase\s+(?:is\s+)?closed\b|\bclosed\s+by\b", regex=True)
 
 
+def _status_label(status):
+    return {"ACTIVE": "ACTIVE — back to the call piles",
+            "INACTIVE": "INACTIVE — closed"}.get(status, status)
+
+
 def _code_label(code):
     return f"{code} — {rv.CLOSE_CODES[code]}" if code in rv.CLOSE_CODES else code
 
@@ -249,22 +254,32 @@ def _validate(vq, summary, subs, can_save):
     _observations(subs, pid)
 
     current = str(rec["current_callcode"]).strip()
-    actions = ["Confirm", "Correct"] + (["Send back"] if rec["kind"] == "closure" else [])
-    action = st.radio("Action", actions, horizontal=True, key=f"review_vact_{pid}")
-    code = current
-    if action == "Correct":
-        options = [c for c in rv.CLOSE_CODES if c != current]
-        code = st.selectbox("Correct to", options, format_func=_code_label,
-                            key=f"review_vcode_{pid}")
+    # Where the case goes: back to the call piles (ACTIVE) or closed (INACTIVE).
+    # A completed interview can only stay INACTIVE (its code can be corrected).
+    statuses = (["INACTIVE"] if rec["kind"] == "complete" else ["ACTIVE", "INACTIVE"])
+    status = st.radio("Status after review", statuses, index=None, horizontal=True,
+                      key=f"review_vstatus_{pid}", format_func=_status_label)
+    code, act = "", ""
+    if status == "INACTIVE":
+        options = [current] + [c for c in rv.CLOSE_CODES if c != current]
+        code = st.selectbox("Closing code", options, key=f"review_vcode_{pid}",
+                            format_func=lambda c: (f"{c} — keep as completed" if c == "1"
+                                                   else _code_label(c)
+                                                   + (" (as the enumerator coded it)"
+                                                      if c == current else "")))
+        act = "confirmed" if code == current else "corrected"
+    elif status == "ACTIVE":
+        act = "sent_back"
+    need = status == "ACTIVE" or act == "corrected"
     comment = st.text_area(
-        "Comment" + ("" if action == "Confirm" else " (required)"),
+        "Comment" + (" (required, shown to the enumerators)" if status == "ACTIVE"
+                     else " (required)" if need else " (optional)"),
         key=f"review_vcom_{pid}",
-        placeholder="What happened — for Send back, this is what the enumerators will read.")
-    need_comment = action != "Confirm" and not comment.strip()
-    if st.button("💾 Save", key=f"review_vsave_{pid}", disabled=not can_save or need_comment):
-        act = {"Confirm": "confirmed", "Correct": "corrected", "Send back": "sent_back"}[action]
+        placeholder="What happened, and for ACTIVE what the enumerator should do now.")
+    if st.button("💾 Save", key=f"review_vsave_{pid}",
+                 disabled=not can_save or not status or (need and not comment.strip())):
         _save([_entry(pid, "validation", act, "" if act == "sent_back" else code,
-                      comment, rec["ref_key"])], f"{pid} ({act})")
+                      comment, rec["ref_key"])], f"{pid} ({status})")
 
 
 # -----------------------------------------------------------------------------
@@ -312,19 +327,22 @@ def _decide(dq, summary, subs, keys, can_save):
     _case_facts(summary, subs, pid)
     _observations(subs, pid)
 
-    action = st.radio("Action", ["Close", "Keep trying"], horizontal=True,
-                      key=f"review_dact_{pid}")
+    # Where the case goes: back to the call piles (ACTIVE) or closed (INACTIVE).
+    status = st.radio("Status after review", ["ACTIVE", "INACTIVE"], index=None,
+                      horizontal=True, key=f"review_dstatus_{pid}", format_func=_status_label)
     code = ""
-    if action == "Close":
-        code = st.selectbox("Close with", list(rv.CLOSE_CODES), format_func=_code_label,
+    if status == "INACTIVE":
+        code = st.selectbox("Closing code", list(rv.CLOSE_CODES), format_func=_code_label,
                             key=f"review_dcode_{pid}")
-    comment = st.text_area("Comment (required)", key=f"review_dcom_{pid}",
-                           placeholder="What happened / what the enumerators should do next.")
+    comment = st.text_area(
+        "Comment (required" + (", shown to the enumerators)" if status == "ACTIVE" else ")"),
+        key=f"review_dcom_{pid}",
+        placeholder="What happened, and for ACTIVE what the enumerator should do now.")
     if st.button("💾 Save", key=f"review_dsave_{pid}",
-                 disabled=not can_save or not comment.strip()):
-        act = "closed" if action == "Close" else "keep_trying"
+                 disabled=not can_save or not status or not comment.strip()):
+        act = "closed" if status == "INACTIVE" else "keep_trying"
         _save([_entry(pid, "decision", act, code, comment, keys.get(pid, ""))],
-              f"{pid} ({act})")
+              f"{pid} ({status})")
 
 
 # -----------------------------------------------------------------------------

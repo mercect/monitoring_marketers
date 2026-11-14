@@ -243,6 +243,11 @@ def check_reopen(fails):
     called = pd.concat([att, pd.DataFrame([sub("A", 5, "2_NA", "a5")])], ignore_index=True)
     ok("a call afterwards takes it off the list",
        reactivated(d, apply_decisions(called, d), now).empty)
+    # ACTIVE on an open case (keep trying): listed, but no extra row added
+    o = pd.DataFrame([sub("B", 1, "2_NA", "b1")])
+    k = dec([("2026-11-04 08:00:00", "S", "B", "decision", "keep_trying", "", "evening", "b1")])
+    ok("keep trying adds no row", len(apply_decisions(o, k)) == 1)
+    ok("keep trying is listed in To be revised", list(reactivated(k, o, now)["pid"]) == ["B"])
 
 
 def check_baseline(s, fails):

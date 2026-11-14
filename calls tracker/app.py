@@ -26,7 +26,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from auth import require_password
-from data_io import (load_all, route_column, newest_batch, parse_dates,
+from data_io import (load_all, route_column, parse_dates,
                      REFRESH_SECONDS, code_stamp, EXPECTED_SAMPLE_TAB)
 from rollup import (OPEN_STATUSES, effort_by_enumerator, summary_kpis,
                     eligible_roster, recruit_exclusions,
@@ -473,77 +473,82 @@ if right.button("🔄 Refresh now"):
 # (the data-source and roster detail now live in the diagnostics panel at the
 #  very bottom of the page — see "What this page is built from")
 
-# --- Sidebar filters (apply to both tabs) -----------------------------------
-# Both filters are keyed by pid: route and date_recruited live on the sample tab
-# (the roster), not on the call attempts, so they narrow `cases` through the pid
-# list rather than through a column of their own.
-st.sidebar.header("Filters")
-
-
-def date_range_filter(label, dates, pids, help=None, default_from=None):
-    """Sidebar date-range picker -> the set of pids inside the picked range.
-
-    Returns None when the picker still spans the whole data, which means "don't
-    filter" — so pids with no date at all (never recruited on a dated row, never
-    assigned) stay visible until the range is actually narrowed."""
-    dates = parse_dates(dates)
-    valid = dates.dropna()
-    if valid.empty:
-        return None
-    lo, hi = valid.min().date(), valid.max().date()
-    if lo == hi:                                # a single day in the data: nothing to pick
-        st.sidebar.caption(f"**{label}** — all on {lo}")
-        return None
-    # Opens at `default_from` (the newest recruitment date) rather than at the
-    # start of the data, so the dashboard lands on the batch being worked now.
-    # Ignored if it falls outside the data, so a stale default cannot produce an
-    # out-of-range picker. Widening back to the full span still means "no filter".
-    start = default_from if (default_from and lo <= default_from <= hi) else lo
-    got = st.sidebar.date_input(label, value=(start, hi), min_value=lo, max_value=hi,
-                                help=help)
-    if not isinstance(got, (tuple, list)) or len(got) != 2:
-        return None                             # mid-pick: only the start date chosen yet
-    a, b = got
-    if a == lo and b == hi:
-        return None                             # full span = no filter
-    d = dates.dt.date
-    return set(pids[(d >= a) & (d <= b)])
-
-
-# route lives on the sample tab (roster) -> it's on the summary, not the attempts
+# --- Filters: one row across the top of the page, always visible ------------
+# Period (by CALL date), priority list (assigned_day) and route. All are keyed
+# by pid, so they narrow `cases` and the summary through the pid list.
+#   Period: "Today" = pids with a call on the latest day in the data; "Since" =
+#   pids with a call on or after the picked date (the cumulative view; the
+#   first call date means everything). Pids nobody has called yet have no call
+#   date: To be assigned (and its counts) follows only the priority list and
+#   route (base_pids), so it never empties out under a period.
+#   Supervisor review and To be revised ignore these filters on purpose.
 route_col = route_column(summary)
 route_options = (sorted(x for x in summary[route_col].dropna().unique() if str(x).strip())
                  if route_col else [])
-# Both filters open on the MOST RECENT recruitment batch — see newest_batch().
-# They are derived from the same call, so the route and the date can never
-# contradict each other and leave the page empty.
-_batch_date, _batch_routes = newest_batch(summary, route_col)
-picked_route = (st.sidebar.multiselect("Route", route_options,
-                                       default=_batch_routes or route_options)
-                if route_options else [])
 
-# when the respondent was recruited (roster date)
-rec_pids = date_range_filter(
-    "Recruitment date", summary.get("date_recruited", pd.Series(dtype=str)), summary["pid"],
-    help="When the respondent was recruited (sample tab).",
-    default_from=_batch_date)
-if _batch_date:
-    st.sidebar.caption(f"Latest batch: **{_batch_date:%d %b}**"
-                       + (f" ({', '.join(_batch_routes)})" if _batch_routes else ""))
+_calls = subs[~review._is_sup(subs)] if "pid" in subs.columns else subs
+_call_day = pd.to_datetime(_calls.get("endtime", pd.Series(dtype=str)), errors="coerce",
+                           utc=True, format="ISO8601").dt.tz_localize(None).dt.date
+_first_day = _call_day.min() if _call_day.notna().any() else None
+_now_day = data_now(summary)
+_today = _now_day.date() if pd.notna(_now_day) else None
+
+f_period, f_day, f_route = st.columns([2.2, 1.6, 2.2])
+with f_period:
+    period = st.radio("Calls", ["Since", "Today"], horizontal=True, key="flt_period",
+                      format_func=lambda p: (f"Today ({_today:%d %b})" if p == "Today" and _today
+                                             else "Since a date" if p == "Since" else p),
+                      help="Today = pids called on the latest day in the data. Since = pids "
+                           "called on or after the date (cumulative). Never-called pids always show.")
+    since = None
+    if period == "Since" and _first_day:
+        since = st.date_input("Since", value=_first_day, min_value=_first_day,
+                              max_value=_today or _first_day, key="flt_since",
+                              label_visibility="collapsed", format="DD/MM/YYYY")
+with f_day:
+    prio = st.radio("Priority list", ["All", "Day 4", "Day 5"], horizontal=True,
+                    key="flt_prio", help="assigned_day: the day-4 or day-5 call list.")
+with f_route:
+    picked_route = (st.multiselect("Route", route_options, default=route_options,
+                                   key="flt_route")
+                    if route_options else [])
+
+call_pids = None
+if _first_day is not None:
+    if period == "Today" and _today:
+        _in = _call_day == _today
+    elif since and since > _first_day:
+        _in = _call_day >= since
+    else:
+        _in = None                                   # from the first call = everything
+    if _in is not None:
+        call_pids = set(_calls.loc[_in.fillna(False).values, "pid"])
+prio_pids = None
+if prio != "All":
+    _d = pd.to_numeric(assigned_day_number(summary.get("assigned_day",
+                                                       pd.Series("", index=summary.index))),
+                       errors="coerce")
+    prio_pids = set(summary.loc[(_d == int(prio.split()[-1])).values, "pid"])
+route_pids = None
+if route_col and picked_route and len(picked_route) != len(route_options):
+    route_pids = set(summary.loc[summary[route_col].isin(picked_route), "pid"])
 
 summary_view = summary
 # combine the pid-keyed filters (None = that filter is untouched). keep_pids stays
 # available afterwards so the raw submissions can be narrowed the same way.
-route_pids = None
-if route_col and picked_route and len(picked_route) != len(route_options):
-    route_pids = set(summary.loc[summary[route_col].isin(picked_route), "pid"])
-keep_pids = None
-for _sel in (route_pids, rec_pids):
+base_pids = None                       # priority list + route only
+for _sel in (prio_pids, route_pids):
     if _sel is not None:
-        keep_pids = _sel if keep_pids is None else (keep_pids & _sel)
+        base_pids = _sel if base_pids is None else (base_pids & _sel)
+keep_pids = base_pids                  # ... and the call period
+if call_pids is not None:
+    keep_pids = call_pids if keep_pids is None else (keep_pids & call_pids)
+# never-called pids under the priority list and route, for To be assigned
+summary_base = summary if base_pids is None else summary[summary["pid"].isin(base_pids)]
 if keep_pids is not None:
     cases = cases[cases["pid"].isin(keep_pids)]
     summary_view = summary_view[summary_view["pid"].isin(keep_pids)]
+st.caption(f"Showing **{len(summary_view)}** of {len(summary)} pids.")
 
 # Tab ORDER is set here; the `with tab_*:` bodies further down can stay in any
 # order, Streamlit renders each into its own tab regardless.
@@ -581,10 +586,13 @@ with tab_summary:
     # so nothing double-counts.
     n_resume_shown = int(ocb["resume_queue"].sum()) if len(ocb) else 0
     n_keep, n_review = int(cnt.get("Keep calling", 0)), int(cnt.get("Review", 0))
-    n_assign = int(((summary_view["case_state"] == "Not assigned")
-                    & (summary_view["eligible_to_call"] == 1)).sum())
+    # Never-called pids follow only the priority list and route (no call date
+    # to filter on): summary_base, as in To be assigned.
+    _unassigned = summary_base[(summary_base["case_state"] == "Not assigned")
+                               & (summary_base["eligible_to_call"] == 1)]
+    n_assign = len(_unassigned)
     n_whatsapp = int(ocb["whatsapp"].sum()) if len(ocb) else 0   # hidden unless SHOW_WHATSAPP
-    total = len(summary_view)
+    total = len(set(summary_view["pid"]) | set(_unassigned["pid"]))
     actionable = n_followup + n_resume + n_keep + n_review + n_assign
     pct = round(100 * actionable / total) if total else 0
     # the follow-up queue split by urgency, so the most owed calls lead
@@ -596,8 +604,6 @@ with tab_summary:
     n_other_cb = max(n_followup - n_overdue - n_next_hour, 0)
     # never-called pids split by how long they have waited since recruitment
     _now = data_now(summary)
-    _unassigned = summary_view[(summary_view["case_state"] == "Not assigned")
-                               & (summary_view["eligible_to_call"] == 1)]
     n_wait_old = int((days_waiting(_unassigned, _now) >= WAIT_DAYS).sum())
     n_wait_new = max(n_assign - n_wait_old, 0)
 
@@ -942,8 +948,8 @@ with tab_action:
     # Archived, and must not reappear here as work to hand out.
     new_cases = summary[(summary["case_state"] == "Not assigned")
                         & (summary["eligible_to_call"] == 1)].copy()
-    if keep_pids is not None:
-        new_cases = new_cases[new_cases["pid"].isin(keep_pids)]
+    if base_pids is not None:
+        new_cases = new_cases[new_cases["pid"].isin(base_pids)]
     # Assigned in the dashboard = handed out: it waits in the list below instead.
     new_cases = new_cases[~new_cases["pid"].isin(_handed)]
     st.markdown(f"#### 🆕 To be assigned ({len(new_cases)})")
@@ -978,8 +984,8 @@ with tab_action:
 
     # ---- assigned in the dashboard, not called yet ---------------------------
     _wait = _asg_checks.get("waiting", pd.DataFrame())
-    if len(_wait) and keep_pids is not None:
-        _wait = _wait[_wait["pid"].isin(keep_pids)]
+    if len(_wait) and base_pids is not None:
+        _wait = _wait[_wait["pid"].isin(base_pids)]
     st.markdown(f"#### 📨 Assigned, not called yet ({len(_wait)})")
     if _wait.empty:
         st.caption("Nothing waiting.")

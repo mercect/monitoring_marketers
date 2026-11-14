@@ -50,9 +50,11 @@ TYPES = {"validation": {"confirmed", "corrected", "sent_back"},
          "assignment": {"assigned"}}
 FINAL_VALIDATION = {"confirmed", "corrected"}
 NOTE_ACTIONS = {"sent_back", "keep_trying", "reopened"}
-# Entries that put a closed case back to work: listed in "To be revised —
-# Data Team checked" until someone calls the pid again.
-REACTIVATE = {"sent_back", "reopened"}
+# Entries that send a case back to the call piles (status ACTIVE in the review
+# tab): listed in "To be revised — Data Team checked" until someone calls the
+# pid again. keep_trying leaves an open case open, but it is a Data Team
+# instruction all the same.
+REACTIVATE = {"sent_back", "reopened", "keep_trying"}
 
 # The 0_ codes a supervisor can close or correct with.
 CLOSE_CODES = {
@@ -298,7 +300,9 @@ def apply_decisions(subs, decisions):
             row = {"callcode": code, "status": status_for(code)}
             if r.sup_action == "corrected" and complete:
                 row["sup_override"] = "1"       # beats the completion
-        elif r.sup_action in REACTIVATE:
+        # a closed case going back to work (keep_trying needs no row: the
+        # case is open already)
+        elif r.sup_action in ("sent_back", "reopened"):
             row = _reopen_state(hist, str(r.sup_ref_key).strip())
         if row is None:
             continue
