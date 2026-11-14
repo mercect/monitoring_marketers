@@ -773,17 +773,19 @@ with tab_action:
             _calls["_t"] = pd.to_datetime(_calls.get("endtime"), errors="coerce", utc=True,
                                           format="ISO8601")
             _last = (_calls.sort_values("_t").groupby("pid").tail(1)
-                     .set_index("pid")[["callcode", "enum_name"]])
+                     .set_index("pid")[["callcode", "_t"]])
             _rv["callcode"] = _rv["pid"].map(_last["callcode"]).fillna("")
-            _rv["enumerator"] = _rv["pid"].map(_last["enum_name"]).fillna("")
+            _rv["last_submission_time"] = (_rv["pid"].map(_last["_t"])
+                                           .dt.tz_localize(None).dt.strftime("%Y-%m-%d %H:%M")
+                                           .fillna(""))
             _rv["reactivated_at"] = pd.to_datetime(_rv["reactivated_at"]).dt.strftime("%Y-%m-%d %H:%M")
             _rv["minutes_waiting"] = _rv["minutes"].astype("Int64")
             _rv = _rv.sort_values("minutes_waiting", ascending=False)
             _rv = _rv.rename(columns={"callcode": "last_callcode", "enumerator": "last_enumerator"})
-            _rcols = [c for c in ["assigned_day", "pid", "supervisor_note", "reactivated_at",
-                                  "reactivated_by", "minutes_waiting", "shifts_to_try",
-                                  "total_attempts", "last_callcode", "last_enumerator"]
-                      if c in _rv.columns]
+            # Just what the enumerator needs: the pid, the supervisor's note, and
+            # the last real call (its code and when).
+            _rcols = [c for c in ["pid", "supervisor_note", "last_callcode",
+                                  "last_submission_time"] if c in _rv.columns]
             ch.dataframe(_rv[_rcols], width="stretch", hide_index=True)
         open_cases = open_cases[~open_cases["pid"].isin(_react["pid"])]
 
