@@ -474,17 +474,15 @@ if right.button("🔄 Refresh now"):
 #  very bottom of the page — see "What this page is built from")
 
 # --- Filters: one row across the top of the page, always visible ------------
-# Period (by CALL date), priority list (assigned_day) and route. All are keyed
-# by pid, so they narrow `cases` and the summary through the pid list.
+# Period (by CALL date) and priority list (assigned_day, e.g. "12Nov-D4"). Both
+# are keyed by pid, so they narrow `cases` and the summary through the pid list.
 #   Period: "Today" = pids with a call on the latest day in the data; "Since" =
 #   pids with a call on or after the picked date (the cumulative view; the
 #   first call date means everything). Pids nobody has called yet have no call
-#   date: To be assigned (and its counts) follows only the priority list and
-#   route (base_pids), so it never empties out under a period.
+#   date: To be assigned (and its counts) follows only the priority list
+#   (base_pids), so it never empties out under a period.
 #   Supervisor review and To be revised ignore these filters on purpose.
-route_col = route_column(summary)
-route_options = (sorted(x for x in summary[route_col].dropna().unique() if str(x).strip())
-                 if route_col else [])
+route_col = route_column(summary)          # still shown as a column in tables
 
 _calls = subs[~review._is_sup(subs)] if "pid" in subs.columns else subs
 _call_day = pd.to_datetime(_calls.get("endtime", pd.Series(dtype=str)), errors="coerce",
@@ -493,25 +491,37 @@ _first_day = _call_day.min() if _call_day.notna().any() else None
 _now_day = data_now(summary)
 _today = _now_day.date() if pd.notna(_now_day) else None
 
-f_period, f_day, f_route = st.columns([2.2, 1.6, 2.2])
+_aday = (summary["assigned_day"].fillna("").astype(str).str.strip()
+         if "assigned_day" in summary.columns else pd.Series("", index=summary.index))
+
+
+def _list_key(v):
+    """Order the lists by date, then day number: '03Nov-D4' < '03Nov-D5' < '12Nov-D4'.
+    Plain values without a date ('4', '5') come first."""
+    d = pd.to_datetime(v.split("-")[0], format="%d%b", errors="coerce")
+    n = pd.to_numeric(assigned_day_number(pd.Series([v])), errors="coerce").iloc[0]
+    return (pd.notna(d), d.dayofyear if pd.notna(d) else 0, n if pd.notna(n) else 0, v)
+
+
+list_options = sorted({v for v in _aday if v}, key=_list_key)
+
+f_period, f_list = st.columns([2, 3])
 with f_period:
     period = st.radio("Calls", ["Since", "Today"], horizontal=True, key="flt_period",
                       format_func=lambda p: (f"Today ({_today:%d %b})" if p == "Today" and _today
                                              else "Since a date" if p == "Since" else p),
                       help="Today = pids called on the latest day in the data. Since = pids "
-                           "called on or after the date (cumulative). Never-called pids always show.")
+                           "called on or after the date (cumulative).")
     since = None
     if period == "Since" and _first_day:
         since = st.date_input("Since", value=_first_day, min_value=_first_day,
                               max_value=_today or _first_day, key="flt_since",
                               label_visibility="collapsed", format="DD/MM/YYYY")
-with f_day:
-    prio = st.radio("Priority list", ["All", "Day 4", "Day 5"], horizontal=True,
-                    key="flt_prio", help="assigned_day: the day-4 or day-5 call list.")
-with f_route:
-    picked_route = (st.multiselect("Route", route_options, default=route_options,
-                                   key="flt_route")
-                    if route_options else [])
+with f_list:
+    picked_lists = st.multiselect("Priority list (assigned_day)", list_options,
+                                  key="flt_lists", placeholder="All lists",
+                                  help="Pick one or more call lists, e.g. 12Nov-D4. "
+                                       "Leave empty for all.")
 
 call_pids = None
 if _first_day is not None:
@@ -523,27 +533,13 @@ if _first_day is not None:
         _in = None                                   # from the first call = everything
     if _in is not None:
         call_pids = set(_calls.loc[_in.fillna(False).values, "pid"])
-prio_pids = None
-if prio != "All":
-    _d = pd.to_numeric(assigned_day_number(summary.get("assigned_day",
-                                                       pd.Series("", index=summary.index))),
-                       errors="coerce")
-    prio_pids = set(summary.loc[(_d == int(prio.split()[-1])).values, "pid"])
-route_pids = None
-if route_col and picked_route and len(picked_route) != len(route_options):
-    route_pids = set(summary.loc[summary[route_col].isin(picked_route), "pid"])
-
-summary_view = summary
-# combine the pid-keyed filters (None = that filter is untouched). keep_pids stays
-# available afterwards so the raw submissions can be narrowed the same way.
-base_pids = None                       # priority list + route only
-for _sel in (prio_pids, route_pids):
-    if _sel is not None:
-        base_pids = _sel if base_pids is None else (base_pids & _sel)
+# priority list only; To be assigned uses this (never-called pids have no call date)
+base_pids = set(summary.loc[_aday.isin(picked_lists).values, "pid"]) if picked_lists else None
 keep_pids = base_pids                  # ... and the call period
 if call_pids is not None:
     keep_pids = call_pids if keep_pids is None else (keep_pids & call_pids)
-# never-called pids under the priority list and route, for To be assigned
+
+summary_view = summary
 summary_base = summary if base_pids is None else summary[summary["pid"].isin(base_pids)]
 if keep_pids is not None:
     cases = cases[cases["pid"].isin(keep_pids)]
@@ -586,7 +582,7 @@ with tab_summary:
     # so nothing double-counts.
     n_resume_shown = int(ocb["resume_queue"].sum()) if len(ocb) else 0
     n_keep, n_review = int(cnt.get("Keep calling", 0)), int(cnt.get("Review", 0))
-    # Never-called pids follow only the priority list and route (no call date
+    # Never-called pids follow only the priority list (no call date
     # to filter on): summary_base, as in To be assigned.
     _unassigned = summary_base[(summary_base["case_state"] == "Not assigned")
                                & (summary_base["eligible_to_call"] == 1)]

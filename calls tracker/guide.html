@@ -135,7 +135,7 @@ footer { color: var(--muted); font-size: 13px; }
     <section id="basics">
       <h2>Basics</h2>
       <ul>
-        <li><strong>Filters</strong> sit in a row at the top of the page. <em>Calls</em>: <em>Since a date</em> (cumulative; it starts at the first call, i.e. everything) or <em>Today</em> (pids called on the latest day in the data). <em>Priority list</em>: all, the day-4 list or the day-5 list (<code>assigned_day</code>). <em>Route</em>. Pids nobody has called yet have no call date, so To be assigned follows only the priority list and route. Supervisor review and <em>To be revised</em> ignore the filters.</li>
+        <li><strong>Filters</strong> sit in a row at the top of the page. <em>Calls</em>: <em>Since a date</em> (cumulative; it starts at the first call, i.e. everything) or <em>Today</em> (pids called on the latest day in the data). <em>Priority list</em>: one or more call lists by their <code>assigned_day</code> (e.g. 12Nov-D4); empty = all lists. Pids nobody has called yet have no call date, so To be assigned follows only the priority list. Supervisor review and <em>To be revised</em> ignore the filters.</li>
         <li><strong>Refresh now</strong> re-reads the Google Sheet. Otherwise the data refreshes by itself every 5 minutes.</li>
         <li><strong>Who is counted.</strong> Only people recruited as <em>Eligible – signed up</em>. Refusals and ineligibles at recruitment cannot be called, so they are left out of every figure.</li>
         <li><strong>"Now".</strong> Overdue and "due in the next hour" are measured against the latest submission in the data, not the clock. During field hours the two are minutes apart.</li>
