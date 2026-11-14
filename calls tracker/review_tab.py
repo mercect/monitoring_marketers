@@ -18,6 +18,18 @@ HISTORY_COLS = ["endtime", "enum_name", "survey_type", "callcode", "last_section
                 "rs_section", "tab_id", "rs_tab_id", "final_comment", "comment_sp", "KEY"]
 
 
+def says_closed(open_cases):
+    """Open pids whose own comments say the case is closed ("This is a close
+    case", "closed by supervisor"): in last_comment, rsd_reason or tab_id
+    (where some typed it). Logged with an open code, so the dashboard still
+    lists them as work, until a supervisor closes them for real."""
+    text = pd.Series("", index=open_cases.index)
+    for c in ("last_comment", "rsd_reason", "tab_id"):
+        if c in open_cases.columns:
+            text = text + " " + open_cases[c].fillna("").astype(str)
+    return text.str.contains(r"(?i)\bclosed?\s+case\b|\bcase\s+(?:is\s+)?closed\b|\bclosed\s+by\b", regex=True)
+
+
 def _code_label(code):
     return f"{code} — {rv.CLOSE_CODES[code]}" if code in rv.CLOSE_CODES else code
 
@@ -156,10 +168,17 @@ def render(summary, subs, open_cases, decisions, dmeta):
 
     keys = rv.status_keys(subs)
     vq = rv.validation_queue(summary, decisions, keys)
+    # Open cases to decide on: the Resume and Review queues, plus any open pid
+    # whose comments SAY it is closed ("This is a close case") although it was
+    # logged with an open code. Those need a supervisor to close them for real.
+    _said = says_closed(open_cases)
     dq = open_cases[(open_cases.get("resume_queue", 0) == 1)
-                    | (open_cases["action_bucket"] == "Review")].copy()
-    dq["queue"] = [" + ".join(q for q, on in (("▶️ Resume", r == 1), ("🔎 Review", b == "Review")) if on)
-                   for r, b in zip(dq.get("resume_queue", 0), dq["action_bucket"])]
+                    | (open_cases["action_bucket"] == "Review") | _said].copy()
+    dq["says_closed"] = _said.reindex(dq.index, fill_value=False)
+    dq["queue"] = [" + ".join(q for q, on in (("▶️ Resume", r == 1), ("🔎 Review", b == "Review"),
+                                              ("💬 says closed", c)) if on)
+                   for r, b, c in zip(dq.get("resume_queue", 0), dq["action_bucket"],
+                                      dq["says_closed"])]
 
     section = st.radio("Section", [f"✔ Validate closures ({len(vq)})",
                                    f"⚖ Decide open cases ({len(dq)})",
@@ -244,10 +263,38 @@ def _decide(dq, summary, subs, keys, can_save):
     if dq.empty:
         st.info("Nothing in the Resume or Review queues.")
         return
+    n_said = int(dq["says_closed"].sum()) if "says_closed" in dq.columns else 0
+    if n_said:
+        st.warning(f"💬 {n_said} open pid(s) have a comment saying the case is closed, "
+                   "but were logged with an open code. Close them here if that is right.")
+    only = st.radio("Show", ["All", f"💬 Says closed ({n_said})"], horizontal=True,
+                    key="review_dfilter")
+    view = dq[dq["says_closed"]] if only.startswith("💬") else dq
     cols = [c for c in ["pid", "queue", "enumerator", "callcode", "total_attempts",
                         "days_open", "last_section", "tab_id", "review_reason",
-                        "last_comment", "supervisor_note"] if c in dq.columns]
-    st.dataframe(dq[cols], hide_index=True, width="stretch")
+                        "last_comment", "supervisor_note"] if c in view.columns]
+    table = view[cols].reset_index(drop=True)
+    table.insert(0, "select", False)
+    edited = st.data_editor(
+        table, hide_index=True, width="stretch", key=f"review_dtable_{only}",
+        disabled=[c for c in table.columns if c != "select"],
+        column_config={"select": st.column_config.CheckboxColumn("✔", width="small")})
+    picked = edited.loc[edited["select"], "pid"].tolist()
+
+    # Close several at once: one code and one comment for every ticked pid.
+    if picked:
+        st.markdown(f"**Close {len(picked)} selected pid(s)**")
+        bcode = st.selectbox("Close with", list(rv.CLOSE_CODES), format_func=_code_label,
+                             key="review_bulk_code")
+        bcom = st.text_area("Comment (required, saved with each)", key="review_bulk_com",
+                            placeholder="Why these are being closed")
+        if st.button(f"🗂 Close {len(picked)} selected", disabled=not can_save or not bcom.strip(),
+                     key="review_bulk_close"):
+            rows = [_entry(p, "decision", "closed", bcode, bcom, keys.get(p, ""))
+                    for p in picked]
+            _save(rows, f"{len(rows)} closure(s)")
+    else:
+        st.caption("Tick pids to close several at once, or decide one pid below.")
 
     st.markdown("#### Decide one pid")
     labels = {f"{p} · {q} · {c}": p for p, q, c in zip(dq["pid"], dq["queue"], dq["callcode"])}
