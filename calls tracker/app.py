@@ -154,6 +154,38 @@ def category_row(title, total_n, where, items, tile_w=165):
                 + head + "".join(tile(i) for i in items) + "</div>", unsafe_allow_html=True)
 
 
+
+def _tile_html(item, width):
+    n, label, colour = item[:3]
+    hint = item[3] if len(item) > 3 else ""
+    c = colour if n else GREY
+    return (f'<div style="flex:0 0 {width}px;box-sizing:border-box;border:1px solid {c};'
+            f'border-left:5px solid {c};border-radius:8px;padding:6px 12px;background:{c}1A">'
+            f'<div style="font-size:1.45rem;font-weight:700;line-height:1.2;color:{c}">{n}</div>'
+            f'<div style="font-size:0.85rem;opacity:.85;line-height:1.25">{label}</div>'
+            + (f'<div style="font-size:0.72rem;opacity:.6;margin-top:1px">{hint}</div>'
+               if hint else "") + '</div>')
+
+
+def progress_row(title, where, rows, tile_w=140):
+    """A Progress line: the list's label on the left, then one row of tiles
+    per (row label, tiles) in `rows`, stacked, so Overall and Today line up
+    column by column. A None tile leaves an empty slot of the same width."""
+    head = (f'<div style="flex:0 0 200px;box-sizing:border-box;padding:4px 4px 4px 0">'
+            f'<div style="font-size:1.05rem;font-weight:700;line-height:1.3">{title}</div>'
+            f'<div style="font-size:0.75rem;opacity:.6">{where}</div></div>')
+    body = []
+    for label, tiles in rows:
+        cells = "".join(_tile_html(t, tile_w) if t is not None
+                        else f'<div style="flex:0 0 {tile_w}px"></div>' for t in tiles)
+        body.append('<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch">'
+                    f'<div style="flex:0 0 58px;font-size:0.78rem;opacity:.65;padding-top:8px">{label}</div>'
+                    + cells + '</div>')
+    st.markdown('<div style="display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 10px;padding-bottom:10px;'
+                'border-bottom:1px solid rgba(128,128,128,.18)">' + head
+                + '<div style="display:flex;flex-direction:column;gap:8px">' + "".join(body) + '</div></div>',
+                unsafe_allow_html=True)
+
 def queue_flags(key, rows, red=None):
     """The flag tiles above each work queue: the one or two counts that say
     what needs attention first. `rows` is the queue before columns are trimmed."""
@@ -737,13 +769,14 @@ with tab_summary:
             _fc = first_call_date(summary_view[summary_view["assigned_day"].astype(str).str.strip()
                                                == _p.list].head(1))
             _first = f"first call {_fc.iloc[0]:%a %d %b}" if len(_fc) and pd.notna(_fc.iloc[0]) else ""
-        category_row(f"📋 {_p.list}", None, _first or "every list together", [
-            (_p.pids, "in the sample", GREY),
-            *[(_pc(getattr(_p, f"{k}_{w}"), _p.pids), k,
-               (GREEN if k == "completed" else BLUE) if getattr(_p, f"{k}_{w}") else GREY,
-               f"{'overall' if w == 'all' else 'today'} · {getattr(_p, f'{k}_{w}')}")
-              for w in ("all", "today") for k in ("attempted", "reached", "completed")],
-        ], tile_w=118)
+        def _share(k, w):
+            v = getattr(_p, f"{k}_{w}")
+            return (_pc(v, _p.pids), k, (GREEN if k == "completed" else BLUE) if v else GREY, f"{v} pids")
+        progress_row(f"📋 {_p.list}", _first or "every list together", [
+            ("Overall", [(_p.pids, "in the sample", GREY)]
+             + [_share(k, "all") for k in ("attempted", "reached", "completed")]),
+            ("Today", [None] + [_share(k, "today") for k in ("attempted", "reached", "completed")]),
+        ])
     st.caption("Shares are of everyone on the list. Reached = picked up the phone at least once. "
                "Today = calls made today (Sierra Leone time).")
 
