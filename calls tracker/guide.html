@@ -214,13 +214,13 @@ footer { color: var(--muted); font-size: 13px; }
         <tbody>
           <tr><td><strong>⏰ To follow up</strong></td><td>overdue (call first) · due in the next hour · later</td><td>⏰ To be followed up</td></tr>
           <tr><td><strong>▶️ To resume</strong></td><td>partial saves to resume · with no tablet id (ask the enumerator who last submitted which tablet holds it)</td><td>▶️ To be resumed</td></tr>
-          <tr><td><strong>🆕 To assign</strong></td><td>skipped in list order (assign now) · waiting 3+ days · recruited recently · assigned, not called in 30 min</td><td>🆕 To be assigned</td></tr>
+          <tr><td><strong>🆕 To assign</strong></td><td>left on each list due today (e.g. <em>left on 12Nov-D4</em> on 16 Nov) · a list from the last 3 days that still has pids left, in red (overdue) · skipped in list order (assign now) · assigned, not called in 30 min</td><td>🆕 To be assigned</td></tr>
           <tr><td><strong>📵 Keep trying</strong></td><td>to keep calling · hard to reach (for the supervisor)</td><td>📵 To keep calling · 🔎 To be reviewed</td></tr>
         </tbody>
       </table></div>
       <ul>
         <li><strong>Partial saves to resume</strong> overlaps the callbacks: a <code>4_SC</code> partial save also has a callback time.</li>
-        <li><strong>Waiting 3+ days</strong>: recruited 3 or more days ago and still not called. Assign these before the recent ones; people go cold fast.</li>
+        <li><strong>Which list is due:</strong> a list is first called on its recruitment day plus its day number (12Nov-D4 on 16 Nov, 12Nov-D5 on 17 Nov). The number is the pids on that list nobody has called yet. Older lists are not shown here; they are still in 🆕 To be assigned.</li>
       </ul>
 
       <h3>⚠️ To fix</h3>

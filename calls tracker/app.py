@@ -37,7 +37,7 @@ import assign
 import attendance
 import column_help as ch
 import enumerators
-from calllist import assigned_day_number, with_list_order
+from calllist import assigned_day_number, lists_due, with_list_order
 import review
 import review_tab
 
@@ -585,10 +585,21 @@ with tab_summary:
     n_next_hour = (int(_cb["callback_when"].astype(str).eq("within 1h").sum())
                    if len(_cb) and "callback_when" in _cb.columns else 0)
     n_other_cb = max(n_followup - n_overdue - n_next_hour, 0)
-    # never-called pids split by how long they have waited since recruitment
     _now = data_now(summary)
-    n_wait_old = int((days_waiting(_unassigned, _now) >= WAIT_DAYS).sum())
-    n_wait_new = max(n_assign - n_wait_old, 0)
+    # never-called pids left on the lists due today (first-call day = recruited
+    # + 4 or 5), and on lists due in the last few days that still have some
+    _clock_day = pd.Timestamp.now(tz="UTC").date()        # Sierra Leone = GMT
+    _due = lists_due(_unassigned, _clock_day, lookback=WAIT_DAYS)
+    _due_tiles = []
+    for _r in _due.itertuples():
+        if _r.due == _clock_day:
+            _due_tiles.append((int(_r.left), f"left on {_r.assigned_day}", BLUE, "first call today"))
+        else:
+            _due_tiles.append((int(_r.left), f"left on {_r.assigned_day}", RED,
+                               f"due {_r.due:%a %d %b}, overdue"))
+    if not any(_r.due == _clock_day for _r in _due.itertuples()):
+        _due_tiles.insert(0, (0, "no list due today", BLUE))
+    n_due = int(_due["left"].sum()) if len(_due) else 0
 
     # ---- 1. DO NOW: the work, grouped by what the enumerator has to do --------
     # Each category is one line: its name and total on the left, the counts
@@ -615,12 +626,11 @@ with tab_summary:
     _category("▶️ To resume", n_resume_shown,
               [(n_resume_shown, "partial saves to resume", BLUE, "on the tablet that saved it"),
                (len(_no_tab), "with no tablet id", RED, "💾 Partial saves")], "▶️ To be resumed")
-    _category("🆕 To assign", n_assign,
-              [(n_skipped, "skipped in list order", RED, "assign now"),
-               (n_wait_old, f"waiting {WAIT_DAYS}+ days", RED),
-               (n_wait_new, "recruited recently", BLUE),
-               (len(_asg_checks["late"]), f"assigned, not called in {assign.LATE_MINUTES} min",
-                RED, "📨 Assigned, not called yet")], "🆕 To be assigned")
+    _category("🆕 To assign", n_due,
+              _due_tiles
+              + [(n_skipped, "skipped in list order", RED, "assign now"),
+                 (len(_asg_checks["late"]), f"assigned, not called in {assign.LATE_MINUTES} min",
+                  RED, "📨 Assigned, not called yet")], "🆕 To be assigned")
     _category("📵 Keep trying", n_keep + n_review,
               [(n_keep, "to keep calling", BLUE),
                (n_review, "hard to reach", ORANGE, "supervisor")],

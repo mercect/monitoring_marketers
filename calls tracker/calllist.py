@@ -44,3 +44,28 @@ def with_list_order(df):
     else:
         out["_rec"] = pd.NaT
     return out
+
+
+def first_call_date(df):
+    """The day each pid's list is first called: recruitment date + the list's
+    day number (a "12Nov-D4" pid recruited on 12 Nov is first called on 16 Nov).
+    NaT when either is missing."""
+    o = with_list_order(df)
+    return (o["_rec"].dt.normalize() + pd.to_timedelta(o["_day"], unit="D")).dt.date
+
+
+def lists_due(never_called, today, lookback=3):
+    """Never-called pids left on each list due by `today`, one row per list:
+    assigned_day, due (first-call date), left. Lists due today first, then
+    lists due in the previous `lookback` days that still have pids left
+    (overdue). Older lists are left out: they are not today's work."""
+    cols = ["assigned_day", "due", "left"]
+    if never_called is None or never_called.empty:
+        return pd.DataFrame(columns=cols)
+    d = never_called.assign(due=first_call_date(never_called).values)
+    d = d[d["due"].notna()]
+    d = d[(d["due"] <= today) & (d["due"] >= today - pd.Timedelta(days=lookback))]
+    if d.empty:
+        return pd.DataFrame(columns=cols)
+    out = (d.groupby(["assigned_day", "due"]).size().rename("left").reset_index())
+    return out.sort_values(["due", "assigned_day"], ascending=[False, True]).reset_index(drop=True)[cols]

@@ -297,6 +297,25 @@ def check_attendance(fails):
     ok("assignment marks who is off-list", "🟠 Salieu Nabay" in " ".join(a["people"]))
 
 
+def check_lists_due(fails):
+    """calllist.py: which list is due on which day, and how many are left."""
+    import datetime as dt
+    from calllist import first_call_date, lists_due
+    ok = lambda name, cond: None if cond else fails.append(f"[lists due] {name}")
+    r = pd.DataFrame({"pid": ["a", "b", "c", "d", "e"],
+                      "date_recruited": ["12/11/2026", "12/11/2026", "12/11/2026", "13/11/2026", "01/11/2026"],
+                      "assigned_day": ["12Nov-D4", "12Nov-D4", "12Nov-D5", "13Nov-D4", "4"]})
+    fc = list(first_call_date(r))
+    ok("12Nov-D4 is first called on 16 Nov", fc[0] == dt.date(2026, 11, 16))
+    ok("12Nov-D5 on 17 Nov, 13Nov-D4 on 17 Nov", fc[2] == fc[3] == dt.date(2026, 11, 17))
+    d16 = lists_due(r, dt.date(2026, 11, 16))
+    ok("on the 16th only 12Nov-D4, 2 left", list(d16["assigned_day"]) == ["12Nov-D4"] and int(d16["left"].iloc[0]) == 2)
+    d17 = lists_due(r, dt.date(2026, 11, 17))
+    ok("on the 17th: today's two lists, then 12Nov-D4 overdue",
+       list(d17["assigned_day"]) == ["12Nov-D5", "13Nov-D4", "12Nov-D4"])
+    ok("old lists are left out", "4" not in set(lists_due(r, dt.date(2026, 11, 17))["assigned_day"]))
+
+
 def check_baseline(s, fails):
     got = {"rows": len(s), "completed": int((s["is_complete"] == 1).sum()),
            "ever_attempted": int(s["ever_attempted"].sum()),
@@ -348,6 +367,7 @@ def main():
     check_assignments(fails)
     check_reopen(fails)
     check_attendance(fails)
+    check_lists_due(fails)
     print("supervisor review rules + enumerator names + assignments + reopen + attendance: checked")
 
     # --- fixture: invariants + baseline + determinism -------------------------
