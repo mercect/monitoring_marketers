@@ -294,6 +294,39 @@ def list_progress(summary_view, subs, day):
         rows.append(row)
     return pd.DataFrame(rows)
 
+
+# Survey-quality questions at the end of the interview (some are not on the
+# form yet; their columns stay blank until they are).
+QC_FIELDS = ["qc1_noise", "qc2_drops", "qc3_underst", "qc4_attention",
+             "qc4_attention_yes", "qc6_difficult", "qc6_difficult_other"]
+END_FIELDS = ["full_end_survey", "partial_end_survey"]
+
+
+def latest_answers(subs, cols):
+    """pid -> the latest non-empty answer to each form field in `cols`, from
+    Long Survey rows only (the Communications form carries no interview
+    content; supervisor rows are paperwork). A field the form does not have
+    yet comes back blank. Adds topup_amount: the top-up rate of the
+    completion, or of the resume if that is the only one."""
+    d = subs
+    if "survey_type" in d.columns:
+        d = d[d["survey_type"].astype(str).str.strip().eq("Long Survey")]
+    d = d[~review._is_sup(d)] if len(d) else d
+    t = _to_dt(d["endtime"] if "endtime" in d.columns else pd.Series("", index=d.index))
+    if "starttime" in d.columns:
+        t = t.fillna(_to_dt(d["starttime"]))
+    d = d.assign(_t=t.values).sort_values("_t")
+    out = pd.DataFrame({"pid": d["pid"].dropna().unique()}) if len(d) else pd.DataFrame(columns=["pid"])
+    want = list(dict.fromkeys(list(cols) + ["topup_rate", "topup_rate_rs"]))
+    for c in want:
+        if c in d.columns:
+            v = d[d[c].astype(str).str.strip().ne("")].groupby("pid")[c].last()
+            out[c] = out["pid"].map(v).fillna("").astype(str)
+        else:
+            out[c] = ""
+    out["topup_amount"] = out["topup_rate"].where(out["topup_rate"] != "", out["topup_rate_rs"])
+    return out
+
 # Enumerators working at once = how many pids are handed out together. Those
 # are tried at about the same time, so within one round the order can blur;
 # a pid more than this many places behind the front of its list was skipped.
@@ -1264,6 +1297,7 @@ with tab_archive:
                           ("0_D", "Keeps dropping — supervisor (0_D)"),
                           ("0_SC", "Keeps rescheduling — supervisor (0_SC)")]
         _known = {c for c, _ in INACTIVE_TYPES}
+        _answers = latest_answers(subs, QC_FIELDS + END_FIELDS + ["topup_mobile_lab", "stop_reason"])
         _groups = INACTIVE_TYPES + [("_other", "Other closure")]
         for _code, _label in _groups:
             _mask = (~_kind.isin(_known)) if _code == "_other" else _kind.eq(_code)
@@ -1271,7 +1305,35 @@ with tab_archive:
             if _g.empty:
                 continue
             st.markdown(f"#### {_label} ({len(_g)})")
-            ch.dataframe(yesno(_g[acols]), width="stretch", hide_index=True)
+            if _code != "1":
+                ch.dataframe(yesno(_g[acols]), width="stretch", hide_index=True)
+                continue
+            # ✅ Completed: the interview and its quality, one row per pid
+            _done_cols = ["pid", "assigned_day", "enumerator", "last_submission_time",
+                          "was_partialsaved", "total_attempts", "numbers_wrong",
+                          "times_rescheduled", "times_dropped", "times_noanswer", "times_off",
+                          "topup_amount", "topup_mobile_lab", "last_comment"] + QC_FIELDS + END_FIELDS
+            _c = (_g[["pid"]]
+                  .merge(summary.drop_duplicates("pid"), on="pid", how="left", suffixes=("", "_s"))
+                  .merge(_answers, on="pid", how="left"))
+            ch.dataframe(yesno(_c[[c for c in _done_cols if c in _c.columns]]),
+                         width="stretch", hide_index=True)
+
+            # 🧩 Partially completed: every pid ever partial-saved, whatever its
+            # status now, with how far the interview got.
+            _ps = summary_view[pd.to_numeric(summary_view.get("was_partialsaved", 0),
+                                             errors="coerce").fillna(0) == 1]
+            st.markdown(f"#### 🧩 Partially completed ({len(_ps)})")
+            st.caption("Pids with a partial save (was_partialsaved = 1), open or closed. "
+                       "last_section = how far the interview got.")
+            if len(_ps):
+                _ps_cols = ["pid", "assigned_day", "enumerator", "last_submission_time",
+                            "current_status", "current_callcode", "last_section_n", "last_section",
+                            "stop_reason", "topup_amount", "topup_mobile_lab"] + QC_FIELDS + END_FIELDS
+                _p = _ps.drop(columns=[c for c in ("stop_reason",) if c in _ps.columns])                         .merge(_answers, on="pid", how="left")
+                ch.dataframe(yesno(_p[[c for c in _ps_cols if c in _p.columns]]
+                                   .sort_values("last_submission_time", ascending=False)),
+                             width="stretch", hide_index=True)
 
 # ============================================================================
 # TAB 7 — SUPERVISOR REVIEW (validate closures, decide hard cases) — review_tab.py
