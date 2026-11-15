@@ -164,12 +164,16 @@ def render(summary, subs, open_cases, decisions, dmeta):
     todo = to_validate(summary, open_cases, decisions, keys)
 
     # Any closed pid can be put back to work, except a completed interview.
+    # Closures still waiting in To validate are left out: 'ACTIVE' there
+    # already sends them back, so this lists only final closures (validated,
+    # or closed by a supervisor).
     _st = summary["current_status"].astype(str).str.upper()
     _done = pd.to_numeric(summary.get("is_complete", 0), errors="coerce").fillna(0) == 1
-    closed = summary[(_st == "INACTIVE") & ~_done].copy()
+    closed = summary[(_st == "INACTIVE") & ~_done
+                     & ~summary["pid"].isin(set(todo["pid"]) if "pid" in todo else set())].copy()
 
     section = st.radio("Section", [f"✔ To validate ({len(todo)})",
-                                   f"🔁 Reopen a closed case ({len(closed)})",
+                                   f"🔁 Reopen a final closure ({len(closed)})",
                                    f"📜 Log ({len(decisions)})"],
                        horizontal=True, label_visibility="collapsed", key="review_section")
 
@@ -332,7 +336,7 @@ def _reopen(closed, summary, subs, keys, can_save):
     pids, under To be revised — Data Team checked, with the reason as the note,
     until someone calls it."""
     if closed.empty:
-        st.info("No closed pids to reopen.")
+        st.info("No final closures to reopen. Closures not validated yet are in ✔ To validate.")
         return
     labels = {f"{p} · {c} · {e}": p for p, c, e in
               zip(closed["pid"], closed["current_callcode"], closed.get("enumerator", ""))}
