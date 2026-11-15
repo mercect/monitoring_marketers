@@ -123,11 +123,10 @@ footer { color: var(--muted); font-size: 13px; }
       <li><a href="#basics">Basics</a></li>
       <li><a href="#codes">Callcodes</a></li>
       <li><a href="#summary">Calls summary</a></li>
+      <li><a href="#attendance">Attendance</a></li>
       <li><a href="#active">Active pids</a></li>
       <li><a href="#inactive">Inactive pids</a></li>
       <li><a href="#partial">Partial saves</a></li>
-      <li><a href="#enumerator">By enumerator</a></li>
-      <li><a href="#attendance">Attendance</a></li>
       <li><a href="#review">Supervisor review</a></li>
     </ol>
   </nav>
@@ -209,39 +208,33 @@ footer { color: var(--muted); font-size: 13px; }
       <p>The first page reads in the order you work: what to do now, what went wrong, then how far along the survey is.</p>
 
       <h3>🎯 Do now</h3>
-      <p>The open pids, split by what to do with them. <strong>Left to right is the priority order.</strong> Each tile says which list in ✅ Active pids to open.</p>
-      <div class="flags">
-        <div class="flag red"><b>3</b><span>overdue callbacks</span></div>
-        <div class="flag orange"><b>1</b><span>callbacks due in the next hour</span></div>
-        <div class="flag blue"><b>4</b><span>other callbacks</span></div>
-        <div class="flag blue"><b>4</b><span>partial saves to resume</span></div>
-        <div class="flag red"><b>2</b><span>never called, waiting 3+ days</span></div>
-        <div class="flag blue"><b>15</b><span>never called, recruited recently</span></div>
-        <div class="flag blue"><b>12</b><span>to keep calling</span></div>
-        <div class="flag orange"><b>2</b><span>hard to reach</span></div>
-      </div>
+      <p>The open pids, grouped by what to do with them. <strong>Top to bottom is the priority order.</strong> Each line names the list in ✅ Active pids to open; the tiles on the right are the counts to watch, most urgent first.</p>
+      <div class="tablebox"><table>
+        <thead><tr><th>Category</th><th>Tiles</th><th>List to open</th></tr></thead>
+        <tbody>
+          <tr><td><strong>⏰ To follow up</strong></td><td>overdue (call first) · due in the next hour · later</td><td>⏰ To be followed up</td></tr>
+          <tr><td><strong>▶️ To resume</strong></td><td>partial saves to resume · with no tablet id (ask the enumerator who last submitted which tablet holds it)</td><td>▶️ To be resumed</td></tr>
+          <tr><td><strong>🆕 To assign</strong></td><td>skipped in list order (assign now) · waiting 3+ days · recruited recently · assigned, not called in 30 min</td><td>🆕 To be assigned</td></tr>
+          <tr><td><strong>📵 Keep trying</strong></td><td>to keep calling · hard to reach (for the supervisor)</td><td>📵 To keep calling · 🔎 To be reviewed</td></tr>
+        </tbody>
+      </table></div>
       <ul>
-        <li><strong>Overdue, next hour, other callbacks</strong> together make up ⏰ To be followed up.</li>
         <li><strong>Partial saves to resume</strong> overlaps the callbacks: a <code>4_SC</code> partial save also has a callback time.</li>
-        <li><strong>Never called, waiting 3+ days</strong>: recruited 3 or more days ago and still not called. Assign these before the recent ones; people go cold fast.</li>
-        <li><strong>Hard to reach</strong> is for the supervisor to decide on.</li>
+        <li><strong>Waiting 3+ days</strong>: recruited 3 or more days ago and still not called. Assign these before the recent ones; people go cold fast.</li>
       </ul>
 
       <h3>⚠️ To fix</h3>
-      <p>Only shown when something went wrong; otherwise the page says <em>Nothing to fix</em>.</p>
+      <p>Calls that should not have happened. Only shown when there are some; otherwise the page says <em>Nothing to fix</em>.</p>
       <div class="tablebox"><table>
         <thead><tr><th>Flag</th><th>What to do</th></tr></thead>
         <tbody>
-          <tr><td>Skipped in call-list order</td><td>Never-called pids the list has moved past. Hand them out now (🆕 To be assigned, red rows).</td></tr>
-          <tr><td>Assigned, not called within 30 min</td><td>Check with the enumerator it was given to (📨 Assigned, not called yet).</td></tr>
-          <tr><td>Called without being assigned</td><td>A first call on a pid nobody assigned in the dashboard (counted from the first assignment onwards). Someone took a case off the list.</td></tr>
-          <tr><td>Called by someone other than assigned</td><td>The first call was made by a different enumerator from the one the pid was assigned to.</td></tr>
           <tr><td>Called again after completing</td><td>The interview was already done. Find out how the pid got back onto someone's list. The table below the flags lists them.</td></tr>
           <tr><td>Called after a supervisor closed them</td><td>A closure usually means "do not call again". Same check.</td></tr>
-          <tr><td>Partial saves with no tablet id</td><td>Nobody knows which tablet holds the interview. Ask the enumerator who last submitted (💾 Partial saves).</td></tr>
-          <tr><td>Closures waiting for validation</td><td>For the supervisor, in 🛂 Supervisor review.</td></tr>
+          <tr><td>Called without being assigned</td><td>A first call on a pid nobody assigned in the dashboard (counted from the first assignment onwards). Someone took a case off the list.</td></tr>
+          <tr><td>Called by someone other than assigned</td><td>The first call was made by a different enumerator from the one the pid was assigned to.</td></tr>
         </tbody>
       </table></div>
+      <p>Closures waiting for validation are counted in 🛂 Supervisor review.</p>
 
       <h3>📞 Today</h3>
       <p>The pace of the day, with the date in the heading. "Today" is the day of the latest submission, so in the morning, before anyone has called, it still shows the previous day under that day's date.</p>
@@ -267,6 +260,19 @@ footer { color: var(--muted); font-size: 13px; }
           <tr><td>Finished</td><td>Completed and closed pids, by reason</td></tr>
         </tbody>
       </table></div>
+    </section>
+
+    <section id="attendance">
+      <h2>🗓️ Attendance</h2>
+      <p>For one day (today by default): who was planned, who checked in, and which list they actually called. It reads the check-in Sheet: the <em>schedule</em> tab (the plan) and the <em>data</em> tab (the start- and end-of-day form). The filter at the top does not apply here.</p>
+      <ul>
+        <li><strong>Tiles:</strong> one per planned shift, checked in out of expected (green = everyone, orange = some, red = nobody, grey = not started yet), and how many people are calling a list other than their own.</li>
+        <li><strong>Assignment:</strong> the plan for the day by shift and list, each person marked ✅ checked in, ⏳ not checked in or 🟠 calling another list, to follow up.</li>
+        <li><strong>Everyone today:</strong> one row per person who was planned, checked in or made a call that day: planned list and shift, arrival time, calls made, how many were on their planned list (<code>on_list</code>) and how many on other lists (<code>other_list</code>, with which lists).</li>
+        <li><strong>Flags:</strong> 🔴 planned but no check-in (or calling without one) · 🟠 calls on another list · 🔵 not on the schedule · 🟡 more than 15 minutes late · ⚪ name not in the <code>enumerators</code> tab (add the spelling to <code>also_typed_as</code>).</li>
+        <li><strong>Calls on another list</strong> are listed call by call under the table. A callback, a case sent back from Supervisor review or a pid you assigned can be a good reason, so check before acting.</li>
+        <li>The list of a call is the <code>assigned_day</code> of the pid called. To change someone's list, change the <em>schedule</em> tab; the dashboard reads it again within 5 minutes.</li>
+      </ul>
     </section>
 
     <section id="active">
@@ -371,27 +377,7 @@ footer { color: var(--muted); font-size: 13px; }
       </ul>
     </section>
 
-    <section id="enumerator">
-      <h2>👤 By enumerator</h2>
-      <ul>
-        <li><strong>On the plate now:</strong> active pids each enumerator holds (they made the last submission). <em>resume (4_)</em> are partial saves on their tablet; <em>follow-up</em> are <code>3_SC</code> / <code>3_D</code>. The two add up to the total.</li>
-        <li><strong>Callback times:</strong> earliest first. ⚠ means overdue; a time with no date means today.</li>
-        <li><strong>Historic effort:</strong> every call is credited to whoever made it. <em>pids tried</em> overlaps between enumerators, because several people try the same respondent.</li>
-      </ul>
-    </section>
 
-    <section id="attendance">
-      <h2>🗓️ Attendance</h2>
-      <p>For one day (today by default): who was planned, who checked in, and which list they actually called. It reads the check-in Sheet: the <em>schedule</em> tab (the plan) and the <em>data</em> tab (the start- and end-of-day form). The filter at the top does not apply here.</p>
-      <ul>
-        <li><strong>Tiles:</strong> one per planned shift, checked in out of expected (green = everyone, orange = some, red = nobody, grey = not started yet), and how many people are calling a list other than their own.</li>
-        <li><strong>Assignment:</strong> the plan for the day by shift and list, each person marked ✅ checked in, ⏳ not checked in or 🟠 calling another list, to follow up.</li>
-        <li><strong>Everyone today:</strong> one row per person who was planned, checked in or made a call that day: planned list and shift, arrival time, calls made, how many were on their planned list (<code>on_list</code>) and how many on other lists (<code>other_list</code>, with which lists).</li>
-        <li><strong>Flags:</strong> 🔴 planned but no check-in (or calling without one) · 🟠 calls on another list · 🔵 not on the schedule · 🟡 more than 15 minutes late · ⚪ name not in the <code>enumerators</code> tab (add the spelling to <code>also_typed_as</code>).</li>
-        <li><strong>Calls on another list</strong> are listed call by call under the table. A callback, a case sent back from Supervisor review or a pid you assigned can be a good reason, so check before acting.</li>
-        <li>The list of a call is the <code>assigned_day</code> of the pid called. To change someone's list, change the <em>schedule</em> tab; the dashboard reads it again within 5 minutes.</li>
-      </ul>
-    </section>
 
 
     <section id="review">

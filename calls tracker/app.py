@@ -29,7 +29,7 @@ import streamlit.components.v1 as components
 from auth import require_password
 from data_io import (load_all, route_column, parse_dates,
                      REFRESH_SECONDS, code_stamp, EXPECTED_SAMPLE_TAB)
-from rollup import (OPEN_STATUSES, effort_by_enumerator, summary_kpis,
+from rollup import (OPEN_STATUSES, summary_kpis,
                     eligible_roster, recruit_exclusions,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME,
                     is_attempt_row, is_contact_row, _to_dt)
@@ -511,10 +511,10 @@ st.caption(f"Showing **{len(summary_view)}** of {len(summary)} pids.")
 
 # Tab ORDER is set here; the `with tab_*:` bodies further down can stay in any
 # order, Streamlit renders each into its own tab regardless.
-(tab_summary, tab_action, tab_archive, tab_partial, tab_enum, tab_attend,
+(tab_summary, tab_attend, tab_action, tab_archive, tab_partial,
  tab_review, tab_guide) = st.tabs(
-    ["🧾 Calls summary", "✅ Active pids", "🗄️ Inactive pids",
-     "💾 Partial saves", "👤 By enumerator", "🗓️ Attendance",
+    ["🧾 Calls summary", "🗓️ Attendance", "✅ Active pids", "🗄️ Inactive pids",
+     "💾 Partial saves",
      "🛂 Supervisor review", "📖 Guide"])
 
 # ============================================================================
@@ -566,23 +566,9 @@ with tab_summary:
     n_wait_old = int((days_waiting(_unassigned, _now) >= WAIT_DAYS).sum())
     n_wait_new = max(n_assign - n_wait_old, 0)
 
-    # ---- 1. DO NOW: the queues in priority order -------------------------------
-    st.subheader(f"🎯 Do now — {actionable} open pids ({pct}% of {total})")
-    _todo = [(n_overdue, "overdue callbacks", RED, "call first · ⏰ To be followed up"),
-             (n_next_hour, "callbacks due in the next hour", ORANGE, "⏰ To be followed up"),
-             (n_other_cb, "other callbacks", BLUE, "⏰ To be followed up"),
-             (n_resume_shown, "partial saves to resume", BLUE, "▶️ To be resumed"),
-             (n_wait_old, f"never called, waiting {WAIT_DAYS}+ days", RED,
-              "assign first · 🆕 To be assigned"),
-             (n_wait_new, "never called, recruited recently", BLUE, "🆕 To be assigned"),
-             (n_keep, "to keep calling", BLUE, "📵 To keep calling"),
-             (n_review, "hard to reach", ORANGE, "supervisor · 🔎 To be reviewed")]
-    if SHOW_WHATSAPP:
-        _todo.append((n_whatsapp, "to message on WhatsApp", BLUE, "📱 WhatsApp"))
-    flag_tiles(_todo)
-    st.caption("Left to right = priority. The lists are in ✅ Active pids.")
-
-    # ---- 2. FIX: things that went wrong (each shown only when it happened) -----
+    # ---- 1. DO NOW: the work, grouped by what the enumerator has to do --------
+    # Each category is one line: its name and total on the left, the counts
+    # that need attention on the right (most urgent first).
     _rc = summary_view[summary_view.get("recontacted_after_complete", 0) == 1]
     _ac = summary_view[summary_view.get("recontacted_after_close", 0) == 1]
     _held = summary_view[pd.to_numeric(summary_view.get("active_partialsave", 0),
@@ -590,27 +576,46 @@ with tab_summary:
     _tab = (_held["tab_id"] if "tab_id" in _held.columns
             else pd.Series("", index=_held.index)).fillna("").astype(str).str.strip()
     _no_tab = _held[_tab.eq("")]
-    _sup = (pd.to_numeric(summary_view["is_supervisor"], errors="coerce").fillna(0)
-            if "is_supervisor" in summary_view.columns
-            else pd.Series(0, index=summary_view.index))
-    _closed = summary_view[
-        (summary_view["current_status"].astype(str).str.upper() == "INACTIVE")
-        & (_sup != 1) & ~summary_view["pid"].isin(_validated)]
     # never-called pids the call list has moved past (see skipped_in_order)
     _skipped = skipped_in_order(summary, handed=_handed)
     n_skipped = int(summary_view["pid"].isin(_skipped.index).sum())
-    _fix = [(n_skipped, "skipped in call-list order", RED, "assign now · 🆕 To be assigned"),
-            (len(_asg_checks["late"]), f"assigned, not called within {assign.LATE_MINUTES} min",
-             RED, "📨 Assigned, not called yet"),
+
+    def _category(title, total_n, items, where):
+        left, right = st.columns([1.4, 5])
+        with left:
+            st.markdown(f"**{title}**  \n{total_n} pids · _{where}_")
+        with right:
+            flag_tiles(items)
+
+    st.subheader(f"🎯 Do now — {actionable} open pids ({pct}% of {total})")
+    _category("⏰ To follow up", n_followup,
+              [(n_overdue, "overdue", RED, "call first"),
+               (n_next_hour, "due in the next hour", ORANGE),
+               (n_other_cb, "later", BLUE)], "⏰ To be followed up")
+    _category("▶️ To resume", n_resume_shown,
+              [(n_resume_shown, "partial saves to resume", BLUE, "on the tablet that saved it"),
+               (len(_no_tab), "with no tablet id", RED, "💾 Partial saves")], "▶️ To be resumed")
+    _category("🆕 To assign", n_assign,
+              [(n_skipped, "skipped in list order", RED, "assign now"),
+               (n_wait_old, f"waiting {WAIT_DAYS}+ days", RED),
+               (n_wait_new, "recruited recently", BLUE),
+               (len(_asg_checks["late"]), f"assigned, not called in {assign.LATE_MINUTES} min",
+                RED, "📨 Assigned, not called yet")], "🆕 To be assigned")
+    _category("📵 Keep trying", n_keep + n_review,
+              [(n_keep, "to keep calling", BLUE),
+               (n_review, "hard to reach", ORANGE, "supervisor")],
+              "📵 To keep calling · 🔎 To be reviewed")
+    if SHOW_WHATSAPP:
+        _category("📱 WhatsApp", n_whatsapp, [(n_whatsapp, "to message", BLUE)], "📱 WhatsApp")
+    st.caption("Top to bottom = priority. The lists are in ✅ Active pids.")
+
+    # ---- 2. FIX: calls that should not have happened (only when they did) -----
+    _fix = [(len(_rc), "called again after completing", RED, "table below"),
+            (len(_ac), "called after a supervisor closed them", RED, "table below"),
             (len(_asg_checks["unassigned"]), "called without being assigned", ORANGE,
              "table below"),
             (len(_asg_checks["other"]), "called by someone other than assigned", ORANGE,
-             "table below"),
-            (len(_rc), "called again after completing", RED, "table below"),
-            (len(_ac), "called after a supervisor closed them", RED, "table below"),
-            (len(_no_tab), "partial saves with no tablet id", RED, "💾 Partial saves"),
-            (len(_closed), "closures waiting for validation", ORANGE,
-             "supervisor · 🛂 Supervisor review")]
+             "table below")]
     st.divider()
     if any(f[0] for f in _fix):
         st.subheader("⚠️ To fix")
@@ -969,86 +974,6 @@ with tab_action:
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
         ch.dataframe(subs, width="stretch", hide_index=True)
-
-# ============================================================================
-# TAB 3 — BY ENUMERATOR (what's on each plate now + historic effort)
-# ============================================================================
-with tab_enum:
-    st.subheader("👤 By enumerator")
-    if cases.empty:
-        st.info("No pids match the current filters.")
-    else:
-        # ---- A. What's on the plate right now --------------------------------
-        # ACTIVE pids the enumerator currently HOLDS (they made the last
-        # submission). ACTIVE = callcode 3_* or 4_* (see rollup.status_for), and
-        # the only codes in those families are 3_SC/3_D and 4_SC/4_D — so the two
-        # columns partition the total exactly.
-        st.markdown("#### 📋 On the plate now — ACTIVE pids held")
-        act = cases[cases["status"].astype(str).str.upper() == "ACTIVE"].copy()
-        act = act[act["enumerator"].astype(str).str.strip() != ""]
-        if act.empty:
-            st.info("No ACTIVE pids under the current filters.")
-        else:
-            cc = act["callcode"].astype(str).str.strip()
-            act["_rs"] = cc.str.startswith("4_").astype(int)          # held partial / logged
-            act["_hd"] = cc.isin(["3_SC", "3_D"]).astype(int)         # imminent or Section D+
-
-            # When each enumerator's callbacks fall due. Only the SC codes carry a
-            # scheduled time — a held partial / drop (D) has none, so it adds nothing
-            # here. Reference "now" = latest activity in the data, as in rollup().
-            now_ref = pd.to_datetime(summary["last_submission_time"], errors="coerce").max()
-            act["_cb_dt"] = pd.to_datetime(act["callback_due"], errors="coerce")
-
-            def _cb_label(dt, when):
-                # same-day callbacks show the time alone; anything else keeps its date
-                if pd.isna(dt):
-                    return ""
-                same_day = pd.notna(now_ref) and dt.date() == now_ref.date()
-                stamp = dt.strftime("%H:%M") if same_day else dt.strftime("%d %b %H:%M")
-                return f"⚠ {stamp}" if str(when).strip() == "overdue" else stamp
-
-            act["_cb_lab"] = [_cb_label(d, w) for d, w
-                              in zip(act["_cb_dt"], act["callback_when"])]
-            # Sorted earliest-first, so the imminent (and overdue) ones lead. Only
-            # the first few are spelled out — a long list would be truncated by the
-            # column and hide the very entries that matter; the rest are counted,
-            # and the full list is the Callback queue on the Active pids tab.
-            CB_SHOWN = 3
-
-            def _join_times(labels):
-                labels = list(labels)
-                shown = "  ·  ".join(labels[:CB_SHOWN])
-                extra = len(labels) - CB_SHOWN
-                return f"{shown}  (+{extra} more)" if extra > 0 else shown
-
-            times = (act.dropna(subset=["_cb_dt"]).sort_values("_cb_dt")
-                        .groupby("enumerator")["_cb_lab"].agg(_join_times))
-
-            plate = act.groupby("enumerator", as_index=False).agg(
-                active=("pid", "count"), rs=("_rs", "sum"), hd=("_hd", "sum"),
-            )
-            plate["cbt"] = plate["enumerator"].map(times).fillna("")
-            plate = plate.sort_values("active", ascending=False)
-            plate.loc[len(plate)] = (["TOTAL"]
-                                     + [int(plate[c].sum()) for c in ["active", "rs", "hd"]]
-                                     + [""])
-            plate = plate.rename(columns={
-                "active": "ACTIVE pids", "rs": "▶️ resume (4_)",
-                "hd": "⏰ follow-up (3_SC / 3_D)", "cbt": "🕒 callback times"})
-            ch.dataframe(plate, width="stretch", hide_index=True)
-
-        # ---- B. Historic effort ----------------------------------------------
-        # Counted from the submissions, NOT the case rows: the case-level
-        # enumerator is only the latest one, so a handed-over pid would credit its
-        # whole history to whoever touched it last.
-        st.markdown("#### 📈 Historic effort — calls actually made")
-        eff = effort_by_enumerator(subs, pids=keep_pids)
-        if eff.empty:
-            st.info("No attempts recorded under the current filters.")
-        else:
-            eff = eff.sort_values("attempts", ascending=False)
-            eff = eff.rename(columns={"pids_tried": "pids tried"})
-            ch.dataframe(eff, width="stretch", hide_index=True)
 
 # ============================================================================
 # TAB — PARTIAL SAVES (which tablet is holding each half-finished interview)
