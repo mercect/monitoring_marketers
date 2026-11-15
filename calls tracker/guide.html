@@ -375,36 +375,36 @@ footer { color: var(--muted); font-size: 13px; }
 
     <section id="review">
       <h2>🛂 Supervisor review</h2>
-      <p>For the supervisor. Everyone can see this tab; only the supervisor can save, with a separate editor password. It covers the whole roster: the filter at the top does not apply here.</p>
+      <p>For the Data Team. Everyone can see this tab; only the Data Team can save, with a separate editor password. It covers the whole roster: the filter at the top does not apply here. Three sections: <em>To validate</em>, <em>Reopen a final closure</em> and <em>Log</em>.</p>
 
-      <h3>Validate closures</h3>
-      <p>Every case an enumerator closed (<code>0_</code>) or completed (<code>1</code>) that has not been reviewed. Reviewing one pid, choose its <strong>status after review</strong>:</p>
+      <h3>To validate</h3>
+      <p>One list of every case that needs validating:</p>
       <div class="tablebox"><table>
-        <thead><tr><th>Status</th><th>Result</th></tr></thead>
+        <thead><tr><th>Group</th><th>What is in it</th></tr></thead>
         <tbody>
-          <tr><td><strong>INACTIVE — closed</strong></td><td>Pick the closing code. It starts on the code the enumerator used: keep it to confirm, or choose another to correct it (a comment is then required). Final: a later call does not reopen it. A wrong complete can be corrected to a <code>0_</code> code.</td></tr>
-          <tr><td><strong>ACTIVE — back to the call piles</strong></td><td>The case goes back to work and appears first in Active pids, under <em>To be revised — Data Team checked</em>, with your comment (required) as the note. Not for completes.</td></tr>
+          <tr><td>🛑 <strong>Closed by enumerator (0_)</strong></td><td>Every <code>0_</code> closure an enumerator logged that has not been validated yet. One closed with a supervisor-only code (<code>0_NA</code> <code>0_OF</code> <code>0_D</code> <code>0_SC</code>) is marked ⚠️.</td></tr>
+          <tr><td>▶️ <strong>To be resumed (partial saved)</strong></td><td>Every open pid in that queue of ✅ Active pids.</td></tr>
+          <tr><td>🔎 <strong>To be reviewed</strong></td><td>Every open pid in that queue (hard to reach).</td></tr>
         </tbody>
       </table></div>
-      <p>To clear a backlog, tick several rows and use <strong>Confirm selected</strong>.</p>
-
-      <h3>Decide open cases</h3>
-      <p>The <em>To be resumed</em> and <em>To be reviewed</em> queues, plus any open pid whose comments <strong>say the case is closed</strong> ("This is a close case", "closed by supervisor") although it was logged with an open code such as <code>3_D</code>. Those are marked 💬 <em>says closed</em>, and the <em>Show</em> filter lists only them.</p>
-      <p><strong>Close several at once:</strong> tick the pids, choose one <code>0_</code> code, write one comment, and click <em>Close selected</em>. Each pid gets its own row in the log.</p>
+      <p>Completed interviews (<code>1</code>) are not in this list; they will get their own check later. The buttons at the top filter by group, with how many are waiting in each. The list itself stays folded: open <strong>📋 Show the list</strong> and click a row to review that pid below, or pick it in the <em>Pid</em> box. The oldest last activity comes first in each group.</p>
+      <p>Then choose the pid's <strong>status after review</strong>. What it does depends on the group:</p>
       <div class="tablebox"><table>
-        <thead><tr><th>Status after review</th><th>Result</th></tr></thead>
+        <thead><tr><th>Group</th><th>Status after review</th><th>Result</th></tr></thead>
         <tbody>
-          <tr><td><strong>INACTIVE — closed</strong></td><td>Ends the case with the <code>0_</code> code you pick. Final.</td></tr>
-          <tr><td><strong>ACTIVE — back to the call piles</strong></td><td>The case stays open and appears first in Active pids, under <em>To be revised — Data Team checked</em>, with your comment as the note, until someone calls it.</td></tr>
+          <tr><td rowspan="2">🛑 Closed by enumerator</td><td><strong>INACTIVE — closed</strong></td><td>Pick the closing code. It starts on the code the enumerator used: keep it to confirm, or choose another to correct it (a comment is then required). Final: a later call does not reopen it.</td></tr>
+          <tr><td><strong>ACTIVE — back to the call piles</strong></td><td>The case goes back to work and appears first in Active pids, under <em>To be revised — Data Team checked</em>, with your comment (required) as the note.</td></tr>
+          <tr><td rowspan="2">▶️ To be resumed<br>🔎 To be reviewed</td><td><strong>INACTIVE — closed</strong></td><td>Ends the case with the <code>0_</code> code you pick (comment required). Final.</td></tr>
+          <tr><td><strong>ACTIVE — back to the call piles</strong></td><td>The case stays open and appears first in Active pids, under <em>To be revised — Data Team checked</em>, with your comment (required) as the note, until someone calls it.</td></tr>
         </tbody>
       </table></div>
 
       <h3>Reopen a final closure</h3>
-      <p>For closures that are already final: validated by a supervisor, or closed by a supervisor. Closures not validated yet are not listed here; send those back from <em>To validate</em> with status ACTIVE. Completed interviews cannot be reopened (correct a wrong complete to a <code>0_</code> code first). Choose the pid, write the reason (shown to the enumerators) and click <strong>Reopen</strong>. The case goes back to the state of its last open call and appears first in Active pids, under <em>To be revised — Data Team checked</em>. If it is closed again later, that closure needs validating again.</p>
+      <p>For closures that are already final: validated by the Data Team, or closed by the Data Team. Closures not validated yet are not listed here; send those back from <em>To validate</em> with status ACTIVE. Completed interviews cannot be reopened. Choose the pid, write the reason (shown to the enumerators) and click <strong>Reopen</strong>. The case goes back to the state of its last open call and appears first in Active pids, under <em>To be revised — Data Team checked</em>. If it is closed again later, that closure needs validating again.</p>
 
       <h3>Reviewing one pid</h3>
       <ol class="steps">
-        <li>Pick the pid. Its history appears first: attempts, last real call, reschedules, drops, shifts not yet tried, partial saved.</li>
+        <li>Pick the pid (click its row in the list, or choose it in the <em>Pid</em> box). <em>Why it needs validating</em> names its group, then its history: attempts, last real call, reschedules, drops, shifts not yet tried, partial saved.</li>
         <li>Open <strong>All observations</strong> to see every submission. Grey rows are Communications form submissions (timing or status only, never interview answers); blue rows are earlier dashboard entries.</li>
         <li>Choose the action, the code if needed, write the comment, and save.</li>
       </ol>

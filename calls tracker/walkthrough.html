@@ -1,0 +1,675 @@
+<title>Dashboard Walkthrough for Supervisors</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: a reading column with a sticky contents rail on wide screens; each
+   dashboard subsection is one block: what it shows, what you do, an example. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --fg: #1c2330;
+  --muted: #5b6577;
+  --line: #dde2ea;
+  --accent: #1f5fa8;
+  --accent-soft: #e6eef8;
+  --new: #0f7b55;      --new-soft: #e2f4ec;
+  --changed: #a35a00;  --changed-soft: #fbefdc;
+  --same: #5b6577;     --same-soft: #eceff3;
+  --red: #c4302b;      --red-soft: #fbe6e5;
+  --orange: #c26a00;   --orange-soft: #fdf0de;
+  --blue: #1f6fd1;     --blue-soft: #e5effc;
+  --grey-chip: #eceff3;
+  --example: #fbfcfd;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d; --surface: #1a2029; --fg: #e4e8ef; --muted: #9aa4b5; --line: #2d3542;
+    --accent: #7fb0ee; --accent-soft: #1d2a3c;
+    --new: #5fd3a3; --new-soft: #15302a; --changed: #f0b465; --changed-soft: #362a17;
+    --same: #9aa4b5; --same-soft: #262d38;
+    --red: #f2837e; --red-soft: #3a1f1f; --orange: #f0ab5c; --orange-soft: #382916;
+    --blue: #86b6f5; --blue-soft: #1b2a40; --grey-chip: #262d38; --example: #161b23;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d; --surface: #1a2029; --fg: #e4e8ef; --muted: #9aa4b5; --line: #2d3542;
+  --accent: #7fb0ee; --accent-soft: #1d2a3c;
+  --new: #5fd3a3; --new-soft: #15302a; --changed: #f0b465; --changed-soft: #362a17;
+  --same: #9aa4b5; --same-soft: #262d38;
+  --red: #f2837e; --red-soft: #3a1f1f; --orange: #f0ab5c; --orange-soft: #382916;
+  --blue: #86b6f5; --blue-soft: #1b2a40; --grey-chip: #262d38; --example: #161b23;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 15.5px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 64px;
+}
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(1.8rem, 4vw, 2.5rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.55rem; font-weight: 600; }
+h3 { font-size: 1.15rem; font-weight: 600; }
+p { margin: 0; }
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+code { background: var(--grey-chip); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; } .rail { display: none; } }
+
+header.top { max-width: 1120px; margin: 0 auto; padding-block: 40px 28px; display: grid; gap: 12px; }
+.eyebrow { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.lede { color: var(--muted); max-width: 66ch; font-size: 1.05rem; }
+
+.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); align-self: start; padding-top: 4px; }
+.rail nav { display: grid; gap: 2px; font-size: 0.9rem; }
+.rail a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-left: 2px solid var(--line); }
+.rail a:hover { color: var(--fg); border-left-color: var(--accent); }
+.rail .sub { padding-left: 22px; font-size: 0.84rem; }
+
+main { display: grid; gap: 56px; min-width: 0; }
+section.part { display: grid; gap: 20px; min-width: 0; }
+.part-head { display: grid; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.part-head p { color: var(--muted); max-width: 70ch; }
+
+.pill { display: inline-block; font-family: var(--font-body); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase; padding: 2px 8px; border-radius: 999px; vertical-align: middle; margin-left: 8px; }
+.pill.new { color: var(--new); background: var(--new-soft); }
+.pill.changed { color: var(--changed); background: var(--changed-soft); }
+.pill.same { color: var(--same); background: var(--same-soft); }
+
+/* summary of changes */
+.changes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.change { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+.change h3 { font-size: 1rem; }
+.change p { color: var(--muted); font-size: 0.93rem; }
+
+/* roles */
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.role { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
+.role ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 0.94rem; }
+
+/* daily flow: a real sequence, so it is numbered */
+ol.flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: step; }
+ol.flow li { counter-increment: step; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+ol.flow li::before { content: counter(step); font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; color: var(--accent);
+  background: var(--accent-soft); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; }
+ol.flow strong { display: block; }
+ol.flow span { color: var(--muted); font-size: 0.94rem; }
+
+/* one dashboard subsection */
+.sub-block { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
+.sub-block > h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.sub-block > h3 .pill { margin-left: 4px; }
+.rows { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 8px 16px; }
+.rows dt { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; padding-top: 3px; }
+.rows dd { margin: 0; }
+.rows dd ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+@media (max-width: 560px) { .rows { grid-template-columns: minmax(0, 1fr); gap: 2px; } .rows dd { margin-bottom: 8px; } }
+.whatnew { background: var(--changed-soft); border-radius: 6px; padding: 8px 12px; font-size: 0.93rem; }
+.whatnew.isnew { background: var(--new-soft); }
+.whatnew b { font-weight: 600; }
+.ask { border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; font-size: 0.93rem; color: var(--muted); }
+.ask b { color: var(--fg); }
+
+/* example mock-ups of the dashboard */
+.example { background: var(--example); border: 1px dashed var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 10px; min-width: 0; }
+.example-label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.flags { display: flex; flex-wrap: wrap; gap: 8px; }
+.flag { font-size: 0.85rem; padding: 4px 10px; border-radius: 6px; font-weight: 500; background: var(--grey-chip); color: var(--muted); }
+.flag b { font-family: var(--font-display); font-size: 1rem; margin-right: 4px; }
+.flag.red { background: var(--red-soft); color: var(--red); }
+.flag.orange { background: var(--orange-soft); color: var(--orange); }
+.flag.blue { background: var(--blue-soft); color: var(--blue); }
+.flag.green { background: var(--new-soft); color: var(--new); }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.84rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-family: var(--font-mono); font-weight: 500; font-size: 0.78rem; color: var(--muted); background: var(--surface); }
+td.wrap { white-space: normal; min-width: 220px; }
+td.mono, td .mono { font-family: var(--font-mono); font-size: 0.82rem; }
+tr.red td { background: var(--red-soft); }
+.chip { font-size: 0.78rem; padding: 1px 7px; border-radius: 999px; background: var(--grey-chip); white-space: nowrap; }
+.chip.blue { background: var(--blue-soft); color: var(--blue); }
+.chip.red { background: var(--red-soft); color: var(--red); }
+.chip.orange { background: var(--orange-soft); color: var(--orange); }
+.mock-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 0.86rem; }
+.mock-btn { border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; background: var(--surface); }
+.mock-btn.on { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+
+.codes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.note { font-size: 0.85rem; color: var(--muted); }
+footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 16px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<header class="top">
+  <div class="eyebrow">Phone survey · call-tracking dashboard</div>
+  <h1>What's changed, and how we work from now on</h1>
+  <p class="lede">A walkthrough of the dashboard, tab by tab, for tomorrow morning's call. Each section says what it shows, what you do with it and what changed. The example tables are made up: the live lists change all day and some may be empty when we look, so the examples show what each one looks like when it has cases.</p>
+</header>
+
+<div class="wrap">
+  <aside class="rail" aria-label="Contents">
+    <nav>
+      <a href="#changes">What's changed</a>
+      <a href="#roles">Who does what</a>
+      <a href="#day">The day, in order</a>
+      <a href="#piles">Tracking sheets and piles</a>
+      <a href="#codes">Callcodes</a>
+      <a href="#top">Top of the page</a>
+      <a href="#summary">🧾 Calls summary</a>
+      <a href="#attendance">🗓️ Attendance</a>
+      <a href="#active">✅ Active pids</a>
+      <a class="sub" href="#revised">To be revised</a>
+      <a class="sub" href="#followup">To be followed up</a>
+      <a class="sub" href="#resume">To be resumed</a>
+      <a class="sub" href="#assign">To be assigned</a>
+      <a class="sub" href="#waiting">Assigned, not called</a>
+      <a class="sub" href="#review">To be reviewed</a>
+      <a class="sub" href="#keep">To keep calling</a>
+      <a href="#inactive">🗄️ Inactive pids</a>
+      <a href="#partial">💾 Partial saves</a>
+      <a href="#supervisor">🛂 Supervisor review</a>
+      <a href="#guide">📖 Guide</a>
+    </nav>
+  </aside>
+
+  <main>
+    <!-- ================================================================= -->
+    <section class="part" id="changes">
+      <div class="part-head">
+        <h2>What's changed at a glance</h2>
+        <p>The short version, for anyone who only reads one part.</p>
+      </div>
+      <div class="changes">
+        <div class="change"><h3>The Data Team validates closures</h3><p>Every 0_ closure an enumerator logs, every partial save to resume and every hard-to-reach case is checked by the Data Team in 🛂 Supervisor review. Each one is confirmed and closed, or sent back with a note.</p></div>
+        <div class="change"><h3>Sent-back cases come first</h3><p>A case the Data Team sends back goes to the top of ✅ Active pids, under 🔁 To be revised, with a note saying what to do. Call these before anything else.</p></div>
+        <div class="change"><h3>First calls are assigned in the dashboard</h3><p>New pids are handed out from 🆕 To be assigned, strictly in list order. Every assignment is logged, and calls are checked against it.</p></div>
+        <div class="change"><h3>New Attendance tab</h3><p>Who was planned, who checked in, and which list each person actually called.</p></div>
+        <div class="change"><h3>A new first page</h3><p>🧾 Calls summary now reads Do now → To fix → Progress, one line per call list.</p></div>
+        <div class="change"><h3>Filter by call list</h3><p>The filter at the top picks call lists by <code>assigned_day</code> (e.g. <code>12Nov-D4</code>). The route filter, the Tracking sheet and the By enumerator tab are gone.</p></div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="roles">
+      <div class="part-head">
+        <h2>Who does what</h2>
+      </div>
+      <div class="roles">
+        <div class="role">
+          <h3>Supervisors</h3>
+          <ul>
+            <li>Check 🗓️ Attendance at the start of each shift.</li>
+            <li>Hand out first calls in 🆕 To be assigned, in order.</li>
+            <li>After the first call, put each tracking sheet at the back of the pile, in the order it comes back.</li>
+            <li>Make sure 🔁 To be revised cases are called first and the note is read.</li>
+            <li>Follow up everything under ⚠️ To fix.</li>
+            <li>Leave closures with the Data Team codes (<code>0_NA</code> <code>0_OF</code> <code>0_D</code> <code>0_SC</code>) to the Data Team.</li>
+          </ul>
+        </div>
+        <div class="role">
+          <h3>Enumerators</h3>
+          <ul>
+            <li>Keep three piles of tracking sheets for each list they manage: reschedules, active, inactive.</li>
+            <li>Work ✅ Active pids from the top down.</li>
+            <li>Read <code>supervisor_note</code> before calling a pid that has one.</li>
+            <li>Close with their own codes only: <code>0_R</code> <code>0_UN</code> <code>0_IN</code> <code>0_WN</code> <code>0_OC</code>.</li>
+            <li>Call only pids they were assigned, or that sit in a queue.</li>
+          </ul>
+        </div>
+        <div class="role">
+          <h3>Data Team</h3>
+          <ul>
+            <li>Validates cases in 🛂 Supervisor review.</li>
+            <li>Confirms or corrects closures, closes hard cases, sends cases back with a note.</li>
+            <li>Reopens a closed case when needed.</li>
+            <li>Is the only one who can save in that tab.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="day">
+      <div class="part-head">
+        <h2>The day, in order</h2>
+        <p>The order to open things in. It follows the dashboard from top to bottom.</p>
+      </div>
+      <ol class="flow">
+        <li><div><strong>🗓️ Attendance</strong><span>Is everyone who was planned checked in, on the right list?</span></div></li>
+        <li><div><strong>🧾 Calls summary → ⚠️ To fix</strong><span>Anything sent back by the Data Team, or calls that should not have happened.</span></div></li>
+        <li><div><strong>✅ Active pids → 🔁 To be revised</strong><span>Cases the Data Team sent back. Called first, note read.</span></div></li>
+        <li><div><strong>⏰ To be followed up</strong><span>Callbacks, overdue (red) first.</span></div></li>
+        <li><div><strong>▶️ To be resumed</strong><span>Partial saves, from the tablet that holds them.</span></div></li>
+        <li><div><strong>🆕 To be assigned</strong><span>First calls, in list order. Red rows (skipped) first.</span></div></li>
+        <li><div><strong>📵 To keep calling</strong><span>Everything else still open, fewest attempts first.</span></div></li>
+      </ol>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="piles">
+      <div class="part-head">
+        <h2>Tracking sheets and piles <span class="pill same">As before</span></h2>
+        <p>The dashboard handles the first call. After that, the paper tracking sheets work the way they always have.</p>
+      </div>
+      <div class="sub-block">
+        <h3>After the first assignment</h3>
+        <dl class="rows">
+          <dt>First call</dt><dd>Assigned in the dashboard, from 🆕 To be assigned, in list order.</dd>
+          <dt>After that</dt><dd>When a tracking sheet comes back, it goes to the <b>back of the pile</b>, in the order it came back. The next call is always taken from the front.</dd>
+        </dl>
+      </div>
+      <div class="sub-block">
+        <h3>Three piles for every list</h3>
+        <p>Remind enumerators: for <b>each list they manage</b>, they keep three separate piles of tracking sheets.</p>
+        <div class="tbl"><table>
+          <tr><th>pile</th><th>what goes in it</th><th>where it shows on the dashboard</th></tr>
+          <tr><td><b>Reschedules</b></td><td class="wrap">A callback time was agreed, or the call dropped and needs chasing. Called at the agreed time.</td><td>⏰ To be followed up</td></tr>
+          <tr><td><b>Active</b></td><td class="wrap">Still open and still to be called: no answer, phone off, a partial save, a case sent back by the Data Team. New sheets join at the back.</td><td>The other queues in ✅ Active pids</td></tr>
+          <tr><td><b>Inactive</b></td><td class="wrap">Completed or closed. Nobody calls these again unless the Data Team sends one back.</td><td>🗄️ Inactive pids</td></tr>
+        </table></div>
+        <p class="note">A sheet the Data Team sends back (🔁 To be revised) moves from Inactive to the front of Active, and is called first.</p>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="codes">
+      <div class="part-head">
+        <h2>Callcodes: what closes a case, and what is final</h2>
+        <p>The status of a case comes from its callcode. This hasn't changed, but the rules on what is final have.</p>
+      </div>
+      <div class="codes">
+        <div class="sub-block">
+          <h3>Status by code</h3>
+          <div class="tbl"><table>
+            <tr><th>code</th><th>status</th></tr>
+            <tr><td class="mono">1</td><td>Completed (inactive)</td></tr>
+            <tr><td class="mono">0_…</td><td>Closed (inactive)</td></tr>
+            <tr><td class="mono">2_…</td><td>Open, still to be reached</td></tr>
+            <tr><td class="mono">3_… 4_…</td><td>Open, in progress (<span class="mono">4_</span> = partial save held on a tablet)</td></tr>
+          </table></div>
+        </div>
+        <div class="sub-block">
+          <h3>Who closes with what</h3>
+          <div class="tbl"><table>
+            <tr><th>code</th><th>used by</th></tr>
+            <tr><td class="mono">0_R 0_UN 0_IN 0_WN 0_OC</td><td>Enumerator</td></tr>
+            <tr><td class="mono">0_NA 0_OF 0_D 0_SC</td><td>Data Team only</td></tr>
+          </table></div>
+          <p class="note">An enumerator who uses a Data Team code gets a ⚠️ warning in Supervisor review.</p>
+        </div>
+      </div>
+      <div class="sub-block">
+        <h3>What is final <span class="pill changed">Changed</span></h3>
+        <dl class="rows">
+          <dt>Completed</dt><dd>Final. Calls logged after it are ignored and flagged under ⚠️ To fix.</dd>
+          <dt>Enumerator 0_</dt><dd><b>Not final until the Data Team validates it.</b> Until then, a new call reopens the case.</dd>
+          <dt>Data Team 0_</dt><dd>Final. A later call does not reopen it, and it is flagged under ⚠️ To fix.</dd>
+        </dl>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="top">
+      <div class="part-head">
+        <h2>Top of the page <span class="pill changed">Changed</span></h2>
+        <p>The filter bar sits above the tabs.</p>
+      </div>
+      <div class="sub-block">
+        <dl class="rows">
+          <dt>Priority list</dt><dd>Pick one or more call lists by <code>assigned_day</code>, e.g. <code>12Nov-D4</code>. Leave it empty to see every list. Supervisor review, To be revised and Attendance always show everything.</dd>
+          <dt>Refresh now</dt><dd>Re-reads the data straight away. Otherwise it refreshes by itself every 5 minutes.</dd>
+          <dt>Column help</dt><dd>Hover over any column heading (tap it on a tablet) to see what it means.</dd>
+        </dl>
+        <div class="whatnew"><b>What changed:</b> the route filter is gone. Each recruitment day is split into two call lists, day 4 and day 5, and you filter by those.</div>
+        <div class="example">
+          <div class="example-label">Example · how a call list is named</div>
+          <p class="mono" style="font-size:0.9rem">12Nov-D4 = recruited on 12 Nov, first called on day 4 (16 Nov)<br>12Nov-D5 = recruited on 12 Nov, first called on day 5 (17 Nov)</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="summary">
+      <div class="part-head">
+        <h2>🧾 Calls summary <span class="pill changed">Changed</span></h2>
+        <p>The first page now reads in the order you work: what to do now, what went wrong, then how far each list has got.</p>
+      </div>
+
+      <div class="sub-block">
+        <h3>🎯 Do now</h3>
+        <dl class="rows">
+          <dt>Shows</dt><dd>The open pids grouped by what to do with them, in priority order. Each line names the list in ✅ Active pids to open, and its tiles are the counts to watch.</dd>
+          <dt>You do</dt><dd>Read it from top to bottom. Red tiles first.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up figures</div>
+          <div class="tbl"><table>
+            <tr><th>category</th><th>tiles</th></tr>
+            <tr><td>⏰ To follow up</td><td><div class="flags"><span class="flag red"><b>3</b>overdue</span><span class="flag orange"><b>1</b>due in the next hour</span><span class="flag"><b>6</b>later</span></div></td></tr>
+            <tr><td>▶️ To resume</td><td><div class="flags"><span class="flag blue"><b>4</b>partial saves to resume</span><span class="flag red"><b>1</b>with no tablet id</span></div></td></tr>
+            <tr><td>🆕 To assign</td><td><div class="flags"><span class="flag blue"><b>18</b>left on 12Nov-D4 on 16 Nov</span><span class="flag red"><b>2</b>skipped in list order</span><span class="flag orange"><b>1</b>assigned, not called in 30 min</span></div></td></tr>
+            <tr><td>📵 Keep trying</td><td><div class="flags"><span class="flag"><b>40</b>to keep calling</span><span class="flag orange"><b>5</b>hard to reach</span></div></td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="sub-block" id="tofix">
+        <h3>⚠️ To fix <span class="pill new">New</span></h3>
+        <dl class="rows">
+          <dt>Shows</dt><dd>Cases sent back by the Data Team, and calls that should not have happened. If there are none, the page says <i>Nothing to fix</i>.</dd>
+          <dt>You do</dt><dd>
+            <ul>
+              <li><b>Sent back by the Data Team to revise:</b> make sure these are called first and the note is read.</li>
+              <li><b>Called again after completing:</b> the interview was already done. Find out how the pid got back onto someone's list.</li>
+              <li><b>Called after the Data Team closed them:</b> a closure means "do not call again". Same check.</li>
+              <li><b>Called without being assigned:</b> someone took a first call off the list.</li>
+              <li><b>Called by someone other than assigned:</b> the first call was made by a different enumerator.</li>
+            </ul>
+          </dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up figures</div>
+          <div class="flags"><span class="flag blue"><b>2</b>sent back by the Data Team to revise</span><span class="flag red"><b>1</b>called again after completing</span><span class="flag red"><b>1</b>called without being assigned</span><span class="flag"><b>0</b>called after the Data Team closed them</span></div>
+        </div>
+      </div>
+
+      <div class="sub-block">
+        <h3>📈 Progress <span class="pill changed">Changed</span></h3>
+        <dl class="rows">
+          <dt>Shows</dt><dd>One line for all lists together, then one per call list, newest first. Each has an <b>Overall</b> row and a <b>Today</b> row: attempted, reached, completed.</dd>
+          <dt>Read it as</dt><dd>Every share is of everyone on the list, not only those reached. The small number under each share is the count of pids.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up figures</div>
+          <div class="tbl"><table>
+            <tr><th>list</th><th></th><th>in the sample</th><th>attempted</th><th>reached</th><th>completed</th></tr>
+            <tr><td class="mono">12Nov-D4</td><td>Overall</td><td>40</td><td>85% <span class="note">34</span></td><td>55% <span class="note">22</span></td><td>30% <span class="note">12</span></td></tr>
+            <tr><td></td><td>Today</td><td></td><td>40% <span class="note">16</span></td><td>20% <span class="note">8</span></td><td>10% <span class="note">4</span></td></tr>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="attendance">
+      <div class="part-head">
+        <h2>🗓️ Attendance <span class="pill new">New</span></h2>
+        <p>For one day (today by default): who was planned, who checked in, and which list each person actually called. It reads the check-in Sheet: the schedule tab and the start- and end-of-day form.</p>
+      </div>
+      <div class="sub-block">
+        <dl class="rows">
+          <dt>Tiles</dt><dd>One per planned shift: checked in out of expected. Green = everyone, orange = some, red = nobody, grey = shift not started yet.</dd>
+          <dt>Assignment</dt><dd>The day's plan by shift and list, each person marked ✅ checked in, ⏳ not checked in or 🟠 calling another list.</dd>
+          <dt>Everyone today</dt><dd>One row per person: planned list and shift, arrival time, calls made, how many were on their own list and how many on other lists.</dd>
+          <dt>You do</dt><dd>Follow up 🔴 no check-in and 🟡 more than 15 min late. Before acting on 🟠 another list, check the reason: a callback, a sent-back case or a pid you assigned can explain it. To move someone to a different list, change the schedule tab.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up people and figures</div>
+          <div class="flags"><span class="flag green"><b>4/4</b>Shift A</span><span class="flag orange"><b>3/4</b>Shift B</span><span class="flag"><b>0/3</b>Shift D (not started)</span><span class="flag orange"><b>1</b>calling another list</span></div>
+          <div class="tbl"><table>
+            <tr><th>name</th><th>planned list</th><th>shift</th><th>arrived</th><th>calls</th><th>on_list</th><th>other_list</th><th>flag</th></tr>
+            <tr><td>Enumerator A</td><td class="mono">12Nov-D4</td><td>A</td><td>07:28</td><td>9</td><td>9</td><td>0</td><td></td></tr>
+            <tr><td>Enumerator B</td><td class="mono">12Nov-D4</td><td>B</td><td>09:52</td><td>5</td><td>3</td><td>2 (11Nov-D5)</td><td><span class="chip orange">🟠 another list</span> <span class="chip">🟡 late</span></td></tr>
+            <tr><td>Enumerator C</td><td class="mono">12Nov-D5</td><td>B</td><td>—</td><td>0</td><td>0</td><td>0</td><td><span class="chip red">🔴 no check-in</span></td></tr>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="active">
+      <div class="part-head">
+        <h2>✅ Active pids: the work queues <span class="pill changed">Changed</span></h2>
+        <p>Every open pid sits in exactly one queue. Work through them from the top of the page down. Each table starts with <code>assigned_day</code> and the pid. If the Data Team left a note, it shows as <code>supervisor_note</code> right after the pid.</p>
+      </div>
+
+      <div class="sub-block" id="revised">
+        <h3>🔁 To be revised — Data Team checked <span class="pill new">New</span></h3>
+        <dl class="rows">
+          <dt>Shows</dt><dd>Cases the Data Team sent back or reopened in Supervisor review that nobody has called since.</dd>
+          <dt>You do</dt><dd><b>Call these first, and read the note:</b> it says why the case came back and what to do. The first call afterwards moves the pid back into its normal queue. While it is listed here, it does not appear in any other queue.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up pids</div>
+          <div class="tbl"><table>
+            <tr><th>pid</th><th>supervisor_note</th><th>last_callcode</th><th>last_submission_time</th></tr>
+            <tr><td class="mono">ZZ10234A1</td><td class="wrap">Closed as 0_WN but only 1 of 2 numbers was tried. Call the second number. (2026-11-15)</td><td class="mono">0_WN</td><td>2026-11-14 16:02</td></tr>
+            <tr><td class="mono">ZZ10871B2</td><td class="wrap">Partial save on tablet T07 is lost. Restart the interview from the beginning. (2026-11-15)</td><td class="mono">4_D</td><td>2026-11-13 11:40</td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="sub-block" id="followup">
+        <h3>⏰ To be followed up <span class="pill same">Same</span></h3>
+        <dl class="rows">
+          <dt>Codes</dt><dd><code>2_D</code> <code>2_OC</code> <code>2_SC</code> <code>3_SC</code> <code>4_SC</code></dd>
+          <dt>Shows</dt><dd>A callback time was agreed, or the call dropped and needs chasing. Overdue callbacks are red and sit at the top. A callback never moves to To be reviewed, because a time was promised to the respondent.</dd>
+          <dt>You do</dt><dd>Call red rows first, then the soonest due. <code>callback_by</code> says whether the enumerator or the respondent calls back.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up pids</div>
+          <div class="flags"><span class="flag red"><b>1</b>overdue</span><span class="flag orange"><b>1</b>due in the next hour</span></div>
+          <div class="tbl"><table>
+            <tr><th>assigned_day</th><th>pid</th><th>callcode</th><th>callback_due</th><th>callback_by</th><th>comments</th></tr>
+            <tr class="red"><td class="mono">12Nov-D4</td><td class="mono">ZZ11002C3</td><td class="mono">2_SC</td><td>2026-11-16 09:00</td><td>enumerator</td><td>At work, call in the morning</td></tr>
+            <tr><td class="mono">12Nov-D5</td><td class="mono">ZZ11450A1</td><td class="mono">3_SC</td><td>2026-11-16 13:30</td><td>respondent</td><td>Will call back after lunch</td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="sub-block" id="resume">
+        <h3>▶️ To be resumed (partial saved) <span class="pill changed">Changed</span></h3>
+        <dl class="rows">
+          <dt>Codes</dt><dd>Last submission is a <code>4_</code>, plus <code>3_D</code></dd>
+          <dt>Shows</dt><dd>A half-finished interview held on a tablet. <code>active_partialsave</code> says whether it is still held (a <code>3_D</code> drop is listed too, but holds nothing).</dd>
+          <dt>You do</dt><dd>Resume it from that tablet. If that is not possible, hand the pid to another enumerator.</dd>
+        </dl>
+        <div class="whatnew"><b>What changed:</b> every case here is also validated by the Data Team. If they decide to close it or give an instruction, it leaves this list or comes back under 🔁 To be revised with a note.</div>
+        <div class="example">
+          <div class="example-label">Example · made-up pids</div>
+          <div class="flags"><span class="flag blue"><b>2</b>held on a tablet now</span><span class="flag red"><b>1</b>no tablet id</span></div>
+          <div class="tbl"><table>
+            <tr><th>assigned_day</th><th>pid</th><th>callcode</th><th>active_partialsave</th><th>tab_id</th><th>last_section</th></tr>
+            <tr><td class="mono">11Nov-D4</td><td class="mono">ZZ09811B1</td><td class="mono">4_D</td><td>Yes</td><td class="mono">T03</td><td>Section C</td></tr>
+            <tr><td class="mono">11Nov-D5</td><td class="mono">ZZ09977A2</td><td class="mono">4_SC</td><td>Yes</td><td>—</td><td>Section B</td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="sub-block" id="assign">
+        <h3>🆕 To be assigned <span class="pill new">New way of assigning</span></h3>
+        <dl class="rows">
+          <dt>Shows</dt><dd>Eligible sign-ups nobody has called yet, sorted by <code>ordering</code>. The top row is always the next pid to give out.</dd>
+          <dt>Red rows</dt><dd><b>Skipped:</b> more than 8 places behind the furthest pid already tried on that list. Hand these out first.</dd>
+          <dt>You do</dt><dd>
+            <ul>
+              <li>Tick the pids you are handing out, lowest <code>ordering</code> first.</li>
+              <li>Choose the enumerator for each in <code>assign to</code>.</li>
+              <li>Choose your name in <b>Assigned by</b> and click <b>Assign</b>.</li>
+            </ul>
+          </dd>
+          <dt>Rules</dt><dd>Never skip ahead, and never repeat a case while new ones are waiting. If you tick a pid while a lower number on the same list is still waiting, the dashboard says so in red and asks for a reason before it saves.</dd>
+        </dl>
+        <div class="whatnew isnew"><b>What changed:</b> first calls are now assigned here, and each assignment is logged with who gave it, to whom and when. Only the first call: after it, the tracking sheet goes to the back of the pile as before. ⚠️ To fix flags calls on pids that were not assigned, or that were called by someone else.</div>
+        <div class="example">
+          <div class="example-label">Example · made-up pids</div>
+          <div class="tbl"><table>
+            <tr><th>✔</th><th>assigned_day</th><th>pid</th><th>ordering</th><th>days_waiting</th><th>assign to</th></tr>
+            <tr class="red"><td>☑</td><td class="mono">12Nov-D4</td><td class="mono">ZZ12008A1</td><td>8</td><td>4</td><td>Enumerator A</td></tr>
+            <tr><td>☑</td><td class="mono">12Nov-D4</td><td class="mono">ZZ12031B2</td><td>29</td><td>4</td><td>Enumerator B</td></tr>
+            <tr><td>☐</td><td class="mono">12Nov-D4</td><td class="mono">ZZ12035C1</td><td>30</td><td>4</td><td></td></tr>
+          </table></div>
+          <p class="note">#8 is red: the team is already on #20–29 and #8 was never called, so it goes out first.</p>
+        </div>
+      </div>
+
+      <div class="sub-block" id="waiting">
+        <h3>📨 Assigned, not called yet <span class="pill new">New</span></h3>
+        <dl class="rows">
+          <dt>Shows</dt><dd>Pids assigned in the dashboard that nobody has called yet, longest waiting first, with who has them and for how many minutes.</dd>
+          <dt>You do</dt><dd>Red after 30 minutes: each enumerator takes one case at a time, so check in with them.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up pids</div>
+          <div class="tbl"><table>
+            <tr><th>pid</th><th>assigned_to</th><th>assigned_by</th><th>minutes_waiting</th></tr>
+            <tr class="red"><td class="mono">ZZ12019A3</td><td>Enumerator C</td><td>Supervisor 1</td><td>42</td></tr>
+            <tr><td class="mono">ZZ12031B2</td><td>Enumerator B</td><td>Supervisor 1</td><td>6</td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="sub-block" id="review">
+        <h3>🔎 To be reviewed (hard to reach) <span class="pill changed">Changed</span></h3>
+        <dl class="rows">
+          <dt>Rule</dt><dd>4 or more of the 5 shift windows tried, <b>or</b> more than 8 attempts, and still not complete. Callbacks never land here.</dd>
+          <dt>Shows</dt><dd>The effort so far: attempts, whether the respondent ever picked up, and how many calls dropped, were rescheduled, went unanswered or found the phone off.</dd>
+          <dt>You do</dt><dd>Nothing new is needed from you: the Data Team reviews every case here. Each one is either closed (with a Data Team code such as <code>0_NA</code>) or comes back under 🔁 To be revised with an instruction.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up pids</div>
+          <div class="flags"><span class="flag orange"><b>1</b>more than 8 attempts</span><span class="flag orange"><b>1</b>4+ shifts tried</span></div>
+          <div class="tbl"><table>
+            <tr><th>pid</th><th>shifts_to_try</th><th>total_attempts</th><th>ever_picked_up</th><th>times_noanswer</th><th>times_off</th></tr>
+            <tr><td class="mono">ZZ08870A1</td><td>E</td><td>7</td><td>No</td><td>5</td><td>2</td></tr>
+            <tr><td class="mono">ZZ08915C2</td><td>C, D</td><td>9</td><td>Yes</td><td>3</td><td>1</td></tr>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="sub-block" id="keep">
+        <h3>📵 To keep calling <span class="pill same">Same</span></h3>
+        <dl class="rows">
+          <dt>Codes</dt><dd><code>2_IN</code> <code>2_NA</code> <code>2_OF</code> <code>2_WN</code></dd>
+          <dt>Shows</dt><dd>No answer, phone off, or a wrong number or wrong person with other numbers still to try. Fewest attempts first, then list order.</dd>
+          <dt>You do</dt><dd>Take the top row. Use <code>shifts_to_try</code> to call in a window nobody has tried yet.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up pids</div>
+          <div class="tbl"><table>
+            <tr><th>assigned_day</th><th>pid</th><th>ordering</th><th>shifts_to_try</th><th>total_attempts</th><th>last_callcode</th></tr>
+            <tr><td class="mono">12Nov-D4</td><td class="mono">ZZ12004A2</td><td>4</td><td>B, C, D, E</td><td>1</td><td class="mono">2_NA</td></tr>
+            <tr><td class="mono">12Nov-D4</td><td class="mono">ZZ12011C1</td><td>11</td><td>A, C, E</td><td>2</td><td class="mono">2_OF</td></tr>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="inactive">
+      <div class="part-head">
+        <h2>🗄️ Inactive pids <span class="pill changed">Changed</span></h2>
+        <p>Completed interviews and closed pids, now in one section per way of closing.</p>
+      </div>
+      <div class="sub-block">
+        <dl class="rows">
+          <dt>Sections</dt><dd>✅ Completed, 🧩 Partially completed, then one per closing code (refusal, ineligible, incorrect respondent, wrong number, other contact), then the Data Team closures. Only sections with pids are shown.</dd>
+          <dt>validated</dt><dd>✔ once the Data Team has confirmed or corrected the closure (final). <i>pending</i> until then: a pending closure can still be reopened by a new call.</dd>
+          <dt>You do</dt><dd>Check regularly that closed pids are off everyone's list, so nobody is called again who should not be.</dd>
+        </dl>
+        <div class="whatnew"><b>What changed:</b> one section per code instead of one long table. ✅ Completed shows the quality of the interview, Refusal shows why they refused, and 🧩 Partially completed lists partial interviews the Data Team closed and completes whose form ended as a partial.</div>
+        <div class="example">
+          <div class="example-label">Example · made-up pids</div>
+          <div class="tbl"><table>
+            <tr><th>pid</th><th>current_callcode</th><th>enumerator</th><th>validated</th></tr>
+            <tr><td class="mono">ZZ07720B1</td><td class="mono">0_R</td><td>Enumerator A</td><td>✔</td></tr>
+            <tr><td class="mono">ZZ07788A2</td><td class="mono">0_R</td><td>Enumerator C</td><td>pending</td></tr>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="partial">
+      <div class="part-head">
+        <h2>💾 Partial saves <span class="pill same">Same</span></h2>
+        <p>A partial save can only be resumed from the tablet it was taken on. This tab shows which tablet holds each one and who to ask.</p>
+      </div>
+      <div class="sub-block">
+        <dl class="rows">
+          <dt>Shows</dt><dd>Pids whose last submission is a <code>4_</code>, grouped by tablet, and every partial save in one table.</dd>
+          <dt>You do</dt><dd><b>No tablet id:</b> start from the enumerator who last submitted. <b>A tablet id that is not a tablet</b> (a callcode or the pid typed in the box): raise it with the enumerator.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · made-up tablets</div>
+          <div class="tbl"><table>
+            <tr><th>tab_id</th><th>partial saves held</th><th>enumerators</th></tr>
+            <tr><td class="mono">T03</td><td>2</td><td>Enumerator A, Enumerator B</td></tr>
+            <tr><td>—</td><td>1</td><td>Enumerator C</td></tr>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="supervisor">
+      <div class="part-head">
+        <h2>🛂 Supervisor review <span class="pill new">New</span></h2>
+        <p>Where the Data Team validates cases. Everyone can see it; only the Data Team can save. It always covers the whole sample, whatever the filter says. You don't need to do anything here, but it explains where the notes in 🔁 To be revised come from.</p>
+      </div>
+
+      <div class="sub-block">
+        <h3>✔ To validate</h3>
+        <dl class="rows">
+          <dt>What is checked</dt><dd>
+            <ul>
+              <li>🛑 <b>Closed by enumerator (0_):</b> every 0_ closure not validated yet</li>
+              <li>▶️ <b>To be resumed (partial saved)</b></li>
+              <li>🔎 <b>To be reviewed</b> (hard to reach)</li>
+            </ul>
+          </dd>
+          <dt>Not yet</dt><dd>Completed interviews will get a separate check later.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · how the tab opens</div>
+          <div class="mock-row"><span class="mock-btn on">All (12)</span><span class="mock-btn">🛑 Closed by enumerator (0_) (5)</span><span class="mock-btn">▶️ To be resumed (partial saved) (4)</span><span class="mock-btn">🔎 To be reviewed (3)</span></div>
+          <div class="mock-row"><span class="mock-btn">› 📋 Show the list (12)</span></div>
+        </div>
+      </div>
+
+      <div class="sub-block">
+        <h3>What the Data Team decides, and what you then see</h3>
+        <div class="tbl"><table>
+          <tr><th>case</th><th>decision</th><th>what happens</th></tr>
+          <tr><td>Enumerator 0_ closure</td><td>Confirmed (INACTIVE)</td><td class="wrap">Final. Stays closed, marked ✔ validated in Inactive pids.</td></tr>
+          <tr><td>Enumerator 0_ closure</td><td>Corrected (INACTIVE)</td><td class="wrap">Final, with the right code. Moves to that code's section in Inactive pids.</td></tr>
+          <tr><td>Enumerator 0_ closure</td><td>Sent back (ACTIVE)</td><td class="wrap">Back to work, at the top of 🔁 To be revised with the note.</td></tr>
+          <tr><td>To be resumed / reviewed</td><td>Closed (INACTIVE)</td><td class="wrap">Final, with a Data Team code. Leaves the queues.</td></tr>
+          <tr><td>To be resumed / reviewed</td><td>Keep trying (ACTIVE)</td><td class="wrap">Stays open, at the top of 🔁 To be revised with the instruction.</td></tr>
+        </table></div>
+      </div>
+
+      <div class="sub-block">
+        <h3>🔁 Reopen a final closure · 📜 Log</h3>
+        <dl class="rows">
+          <dt>Reopen</dt><dd>The Data Team can put a final closure back to work with a reason. It appears in 🔁 To be revised. Completed interviews cannot be reopened.</dd>
+          <dt>Log</dt><dd>Every decision, newest first. Nothing is overwritten: a change of mind is a new entry.</dd>
+        </dl>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <section class="part" id="guide">
+      <div class="part-head">
+        <h2>📖 Guide <span class="pill new">New</span></h2>
+        <p>The last tab is the full reference: every list, column, flag and rule. When something on the dashboard is unclear, look there first.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>All pids, people, tablets and figures in the example boxes are made up for illustration. The live dashboard shows the real cases.</footer>
