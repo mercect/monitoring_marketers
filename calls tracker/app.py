@@ -1299,11 +1299,14 @@ with tab_archive:
         _known = {c for c, _ in INACTIVE_TYPES}
         _answers = latest_answers(subs, QC_FIELDS + END_FIELDS + ["topup_mobile_lab", "stop_reason", "c01"])
         _groups = INACTIVE_TYPES + [("_other", "Other closure")]
-        # A partial-saved interview the Data Team closed (a supervisor
-        # closure, not a complete) goes to 🧩 Partially completed instead of
-        # its closing code's section.
+        # 🧩 Partially completed takes, instead of their usual section:
+        #   - partial-saved interviews the Data Team closed (a supervisor
+        #     closure, not a complete), and
+        #   - completes whose form ended as a partial (partial_end_survey = 1),
+        #     which leave ✅ Completed.
         _psaved = pd.to_numeric(arch.get("was_partialsaved", 0), errors="coerce").fillna(0) == 1
-        _partial_closed = arch[_psaved & _sup & ~_done]
+        _pend = set(_answers.loc[_answers["partial_end_survey"].astype(str).str.strip() == "1", "pid"])
+        _partial_closed = arch[(_psaved & _sup & ~_done) | (_done & arch["pid"].isin(_pend))]
         for _code, _label in _groups:
             _mask = (~_kind.isin(_known)) if _code == "_other" else _kind.eq(_code)
             _mask = _mask & ~arch["pid"].isin(_partial_closed["pid"])
@@ -1342,8 +1345,9 @@ with tab_archive:
             # status now, with how far the interview got.
             _ps = summary_view[summary_view["pid"].isin(_partial_closed["pid"])]
             st.markdown(f"#### 🧩 Partially completed ({len(_ps)})")
-            st.caption("Partial-saved interviews (was_partialsaved = 1) that the Data Team "
-                       "closed. last_section = how far the interview got.")
+            st.caption("Partial-saved interviews the Data Team closed, and completes whose form "
+                       "ended as a partial (partial_end_survey = 1). last_section = how far the "
+                       "interview got.")
             if len(_ps):
                 _ps_cols = ["pid", "assigned_day", "enumerator", "last_submission_time",
                             "current_status", "current_callcode", "last_section_n", "last_section",
