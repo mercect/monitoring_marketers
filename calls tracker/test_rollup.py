@@ -291,6 +291,10 @@ def check_attendance(fails):
     ok("checked in but not planned", "Not on the schedule" in t.at["Di E", "flag"])
     off = at.off_list_calls(t.reset_index(), calls)
     ok("off-list call listed", list(off["pid"]) == ["p9"])
+    a = at.assignment(t.reset_index())
+    d4 = a[a["list"] == "12Nov-D4"]
+    ok("assignment groups by shift and list", len(a) == 3 and set(d4["checked_in"]) == {"1/1"})
+    ok("assignment marks who is off-list", "🟠 Salieu Nabay" in " ".join(a["people"]))
 
 
 def check_baseline(s, fails):

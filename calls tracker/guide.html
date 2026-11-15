@@ -136,7 +136,7 @@ footer { color: var(--muted); font-size: 13px; }
     <section id="basics">
       <h2>Basics</h2>
       <ul>
-        <li><strong>Filters</strong> sit in a row at the top of the page. <em>Calls</em>: <em>Since a date</em> (cumulative; it starts at the first call, i.e. everything) or <em>Today</em> (pids called on the latest day in the data). <em>Priority list</em>: one or more call lists by their <code>assigned_day</code> (e.g. 12Nov-D4); empty = all lists. Pids nobody has called yet have no call date, so To be assigned follows only the priority list. Supervisor review and <em>To be revised</em> ignore the filters.</li>
+        <li><strong>Filter</strong> at the top of the page: <em>Priority list</em>, one or more call lists by their <code>assigned_day</code> (e.g. 12Nov-D4); empty = all lists. Supervisor review, <em>To be revised</em> and Attendance ignore it.</li>
         <li><strong>Refresh now</strong> re-reads the Google Sheet. Otherwise the data refreshes by itself every 5 minutes.</li>
         <li><strong>Who is counted.</strong> Only people recruited as <em>Eligible – signed up</em>. Refusals and ineligibles at recruitment cannot be called, so they are left out of every figure.</li>
         <li><strong>"Now".</strong> Overdue and "due in the next hour" are measured against the latest submission in the data, not the clock. During field hours the two are minutes apart.</li>
@@ -382,9 +382,11 @@ footer { color: var(--muted); font-size: 13px; }
 
     <section id="attendance">
       <h2>🗓️ Attendance</h2>
-      <p>For one day (today by default): who was planned, who checked in, and which list they actually called. It reads the check-in Sheet: the <em>schedule</em> tab (the plan) and the <em>data</em> tab (the start- and end-of-day form). The filters at the top do not apply here.</p>
+      <p>For one day (today by default): who was planned, who checked in, and which list they actually called. It reads the check-in Sheet: the <em>schedule</em> tab (the plan) and the <em>data</em> tab (the start- and end-of-day form). The filter at the top does not apply here.</p>
       <ul>
-        <li><strong>One row per person</strong> who was planned, checked in or made a call that day: planned list and shift, arrival time, calls made, how many were on their planned list (<code>on_list</code>) and how many on other lists (<code>other_list</code>, with which lists).</li>
+        <li><strong>Tiles:</strong> one per planned shift, checked in out of expected (green = everyone, orange = some, red = nobody, grey = not started yet), and how many people are calling a list other than their own.</li>
+        <li><strong>Assignment:</strong> the plan for the day by shift and list, each person marked ✅ checked in, ⏳ not checked in or 🟠 calling another list, to follow up.</li>
+        <li><strong>Everyone today:</strong> one row per person who was planned, checked in or made a call that day: planned list and shift, arrival time, calls made, how many were on their planned list (<code>on_list</code>) and how many on other lists (<code>other_list</code>, with which lists).</li>
         <li><strong>Flags:</strong> 🔴 planned but no check-in (or calling without one) · 🟠 calls on another list · 🔵 not on the schedule · 🟡 more than 15 minutes late · ⚪ name not in the <code>enumerators</code> tab (add the spelling to <code>also_typed_as</code>).</li>
         <li><strong>Calls on another list</strong> are listed call by call under the table. A callback, a case sent back from Supervisor review or a pid you assigned can be a good reason, so check before acting.</li>
         <li>The list of a call is the <code>assigned_day</code> of the pid called. To change someone's list, change the <em>schedule</em> tab; the dashboard reads it again within 5 minutes.</li>
@@ -394,7 +396,7 @@ footer { color: var(--muted); font-size: 13px; }
 
     <section id="review">
       <h2>🛂 Supervisor review</h2>
-      <p>For the supervisor. Everyone can see this tab; only the supervisor can save, with a separate editor password. It covers the whole roster: the filters at the top do not apply here.</p>
+      <p>For the supervisor. Everyone can see this tab; only the supervisor can save, with a separate editor password. It covers the whole roster: the filter at the top does not apply here.</p>
 
       <h3>Validate closures</h3>
       <p>Every case an enumerator closed (<code>0_</code>) or completed (<code>1</code>) that has not been reviewed. Reviewing one pid, choose its <strong>status after review</strong>:</p>

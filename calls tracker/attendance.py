@@ -228,6 +228,27 @@ def day_table(day, schedule, checkins, calls, known=None):
               .reset_index(drop=True)
 
 
+def assignment(day_rows):
+    """The plan for the day, one row per shift and list: how many are in out of
+    how many expected, and each person marked ✅ in, ⏳ not in, 🟠 calling
+    another list."""
+    plan = day_rows[day_rows["planned_list"] != ""]
+    if plan.empty:
+        return pd.DataFrame(columns=["shift", "list", "checked_in", "people"])
+
+    def mark(r):
+        if "another list" in r["flag"]:
+            return f"🟠 {r['enumerator']}"
+        return f"{'✅' if r['checked_in'] == '✅' else '⏳'} {r['enumerator']}"
+    rows = []
+    for (shift, lst), g in plan.groupby(["shift", "planned_list"], sort=False):
+        g = g.sort_values(["checked_in", "enumerator"], ascending=[False, True])
+        rows.append({"shift": shift, "list": lst,
+                     "checked_in": f"{int((g['checked_in'] == '✅').sum())}/{len(g)}",
+                     "people": ", ".join(g.apply(mark, axis=1))})
+    return pd.DataFrame(rows)
+
+
 def off_list_calls(day_rows, calls):
     """The calls behind the 🟠 flag: pid, time, code, the pid's list and the
     caller's planned list."""

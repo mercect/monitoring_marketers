@@ -85,6 +85,8 @@ HELP = {
     "other_lists": "Which other lists, and how many calls on each.",
     "pid_list": "The list (assigned_day) of the pid called.",
     "time": "Time of the call.",
+    "list": "Call list (assigned_day), e.g. 12Nov-D4.",
+    "people": "Who is planned: ✅ checked in · ⏳ not checked in · 🟠 calling another list.",
     # closed pids
     "validated": "✔ once a supervisor confirmed or corrected the closure (final); pending until then.",
     "is_supervisor": "Was the pid closed by a supervisor?",

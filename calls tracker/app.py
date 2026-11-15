@@ -20,6 +20,7 @@
 # indicators.py. This dashboard is the call-tracking / case-management view.
 # -----------------------------------------------------------------------------
 import pathlib
+import re
 
 import pandas as pd
 import streamlit as st
@@ -474,23 +475,11 @@ if right.button("🔄 Refresh now"):
 # (the data-source and roster detail now live in the diagnostics panel at the
 #  very bottom of the page — see "What this page is built from")
 
-# --- Filters: one row across the top of the page, always visible ------------
-# Period (by CALL date) and priority list (assigned_day, e.g. "12Nov-D4"). Both
-# are keyed by pid, so they narrow `cases` and the summary through the pid list.
-#   Period: "Today" = pids with a call on the latest day in the data; "Since" =
-#   pids with a call on or after the picked date (the cumulative view; the
-#   first call date means everything). Pids nobody has called yet have no call
-#   date: To be assigned (and its counts) follows only the priority list
-#   (base_pids), so it never empties out under a period.
-#   Supervisor review and To be revised ignore these filters on purpose.
+# --- Filter: one row across the top of the page, always visible -------------
+# Priority list (assigned_day, e.g. "12Nov-D4"), keyed by pid, so it narrows
+# `cases` and the summary through the pid list. Empty = all lists.
+#   Supervisor review, To be revised and Attendance ignore it on purpose.
 route_col = route_column(summary)          # still shown as a column in tables
-
-_calls = subs[~review._is_sup(subs)] if "pid" in subs.columns else subs
-_call_day = pd.to_datetime(_calls.get("endtime", pd.Series(dtype=str)), errors="coerce",
-                           utc=True, format="ISO8601").dt.tz_localize(None).dt.date
-_first_day = _call_day.min() if _call_day.notna().any() else None
-_now_day = data_now(summary)
-_today = _now_day.date() if pd.notna(_now_day) else None
 
 _aday = (summary["assigned_day"].fillna("").astype(str).str.strip()
          if "assigned_day" in summary.columns else pd.Series("", index=summary.index))
@@ -506,39 +495,12 @@ def _list_key(v):
 
 list_options = sorted({v for v in _aday if v}, key=_list_key)
 
-f_period, f_list = st.columns([2, 3])
-with f_period:
-    period = st.radio("Calls", ["Since", "Today"], horizontal=True, key="flt_period",
-                      format_func=lambda p: (f"Today ({_today:%d %b})" if p == "Today" and _today
-                                             else "Since a date" if p == "Since" else p),
-                      help="Today = pids called on the latest day in the data. Since = pids "
-                           "called on or after the date (cumulative).")
-    since = None
-    if period == "Since" and _first_day:
-        since = st.date_input("Since", value=_first_day, min_value=_first_day,
-                              max_value=_today or _first_day, key="flt_since",
-                              label_visibility="collapsed", format="DD/MM/YYYY")
-with f_list:
-    picked_lists = st.multiselect("Priority list (assigned_day)", list_options,
-                                  key="flt_lists", placeholder="All lists",
-                                  help="Pick one or more call lists, e.g. 12Nov-D4. "
-                                       "Leave empty for all.")
-
-call_pids = None
-if _first_day is not None:
-    if period == "Today" and _today:
-        _in = _call_day == _today
-    elif since and since > _first_day:
-        _in = _call_day >= since
-    else:
-        _in = None                                   # from the first call = everything
-    if _in is not None:
-        call_pids = set(_calls.loc[_in.fillna(False).values, "pid"])
-# priority list only; To be assigned uses this (never-called pids have no call date)
+picked_lists = st.multiselect("Priority list (assigned_day)", list_options,
+                              key="flt_lists", placeholder="All lists",
+                              help="Pick one or more call lists, e.g. 12Nov-D4. "
+                                   "Leave empty for all.")
 base_pids = set(summary.loc[_aday.isin(picked_lists).values, "pid"]) if picked_lists else None
-keep_pids = base_pids                  # ... and the call period
-if call_pids is not None:
-    keep_pids = call_pids if keep_pids is None else (keep_pids & call_pids)
+keep_pids = base_pids
 
 summary_view = summary
 summary_base = summary if base_pids is None else summary[summary["pid"].isin(base_pids)]
@@ -1121,15 +1083,43 @@ with tab_attend:
     if _rows.empty:
         st.info("Nobody planned, checked in or calling on this day.")
     else:
-        _planned = _rows["planned_list"] != ""
-        _in = _rows["checked_in"] == "✅"
-        flag_tiles([
-            (int(_planned.sum()), "planned", BLUE),
-            (int((_planned & _in).sum()), "planned and checked in", GREEN),
-            (int((_planned & ~_in).sum()), "planned, no check-in", RED),
-            (int(_rows["flag"].str.contains("another list").sum()), "calling another list", ORANGE),
-            (int((~_planned).sum()), "not on the schedule", BLUE),
-        ])
+        # One tile per planned shift: checked in / expected. Green = everyone,
+        # orange = some, red = nobody, grey = the shift has not started yet.
+        # Then the one count that needs action: people on the wrong list.
+        _plan = _rows[_rows["planned_list"] != ""]
+        _now = pd.Timestamp.now(tz="UTC").tz_localize(None)
+
+        def _start_min(shift):
+            m = re.match(r"\s*(\d{1,2}):(\d{2})", str(shift))
+            return int(m[1]) * 60 + int(m[2]) if m else 24 * 60
+        _tiles = []
+        for _sft in sorted(_plan["shift"].unique(), key=_start_min):
+            _g = _plan[_plan["shift"] == _sft]
+            _n, _k = len(_g), int((_g["checked_in"] == "✅").sum())
+            _started = _day < _today or (_day == _today
+                                         and _now.hour * 60 + _now.minute >= _start_min(_sft))
+            _col = (GREY if not _started else GREEN if _k == _n else RED if _k == 0 else ORANGE)
+            _hint = (f"starts {str(_sft).split('–')[0]}" if not _started
+                     else "everyone in" if _k == _n else f"{_n - _k} not checked in")
+            _tiles.append((f"{_k}/{_n}", f"Shift {_sft}", _col, _hint))
+        _tiles.append((int(_rows["flag"].str.contains("another list").sum()),
+                       "doing another list", ORANGE, "see the list under the table"))
+        flag_tiles(_tiles)
+
+        # The day's assignment: who should be on which list, per shift, and who
+        # is in (✅), not in yet (⏳) or calling another list (🟠).
+        st.markdown("#### 📋 Assignment")
+        _asg = attendance.assignment(_rows)
+        if _asg.empty:
+            st.caption("Nobody is planned on this day.")
+        else:
+            _asg["_o"] = _asg["shift"].map(_start_min)
+            ch.dataframe(_asg.sort_values(["_o", "list"]).drop(columns="_o"),
+                         hide_index=True, width="stretch",
+                         column_config={"people": st.column_config.Column(
+                             help="✅ checked in · ⏳ not checked in · 🟠 calling another list",
+                             width="large")})
+        st.markdown("#### 👥 Everyone today")
         ch.dataframe(_rows, hide_index=True, width="stretch",
                      column_config={"late_min": st.column_config.NumberColumn(format="%d"),
                                     "flag": st.column_config.Column(
