@@ -127,6 +127,7 @@ footer { color: var(--muted); font-size: 13px; }
       <li><a href="#inactive">Inactive pids</a></li>
       <li><a href="#partial">Partial saves</a></li>
       <li><a href="#enumerator">By enumerator</a></li>
+      <li><a href="#attendance">Attendance</a></li>
       <li><a href="#review">Supervisor review</a></li>
     </ol>
   </nav>
@@ -376,6 +377,17 @@ footer { color: var(--muted); font-size: 13px; }
         <li><strong>On the plate now:</strong> active pids each enumerator holds (they made the last submission). <em>resume (4_)</em> are partial saves on their tablet; <em>follow-up</em> are <code>3_SC</code> / <code>3_D</code>. The two add up to the total.</li>
         <li><strong>Callback times:</strong> earliest first. ⚠ means overdue; a time with no date means today.</li>
         <li><strong>Historic effort:</strong> every call is credited to whoever made it. <em>pids tried</em> overlaps between enumerators, because several people try the same respondent.</li>
+      </ul>
+    </section>
+
+    <section id="attendance">
+      <h2>🗓️ Attendance</h2>
+      <p>For one day (today by default): who was planned, who checked in, and which list they actually called. It reads the check-in Sheet: the <em>schedule</em> tab (the plan) and the <em>data</em> tab (the start- and end-of-day form). The filters at the top do not apply here.</p>
+      <ul>
+        <li><strong>One row per person</strong> who was planned, checked in or made a call that day: planned list and shift, arrival time, calls made, how many were on their planned list (<code>on_list</code>) and how many on other lists (<code>other_list</code>, with which lists).</li>
+        <li><strong>Flags:</strong> 🔴 planned but no check-in (or calling without one) · 🟠 calls on another list · 🔵 not on the schedule · 🟡 more than 15 minutes late · ⚪ name not in the <code>enumerators</code> tab (add the spelling to <code>also_typed_as</code>).</li>
+        <li><strong>Calls on another list</strong> are listed call by call under the table. A callback, a case sent back from Supervisor review or a pid you assigned can be a good reason, so check before acting.</li>
+        <li>The list of a call is the <code>assigned_day</code> of the pid called. To change someone's list, change the <em>schedule</em> tab; the dashboard reads it again within 5 minutes.</li>
       </ul>
     </section>
 

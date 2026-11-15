@@ -33,6 +33,7 @@ from rollup import (OPEN_STATUSES, effort_by_enumerator, summary_kpis,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME,
                     is_attempt_row, is_contact_row, _to_dt)
 import assign
+import attendance
 import column_help as ch
 import enumerators
 from calllist import assigned_day_number, with_list_order
@@ -548,10 +549,10 @@ st.caption(f"Showing **{len(summary_view)}** of {len(summary)} pids.")
 
 # Tab ORDER is set here; the `with tab_*:` bodies further down can stay in any
 # order, Streamlit renders each into its own tab regardless.
-(tab_summary, tab_action, tab_archive, tab_partial, tab_enum,
+(tab_summary, tab_action, tab_archive, tab_partial, tab_enum, tab_attend,
  tab_review, tab_guide) = st.tabs(
     ["🧾 Calls summary", "✅ Active pids", "🗄️ Inactive pids",
-     "💾 Partial saves", "👤 By enumerator",
+     "💾 Partial saves", "👤 By enumerator", "🗓️ Attendance",
      "🛂 Supervisor review", "📖 Guide"])
 
 # ============================================================================
@@ -1093,6 +1094,55 @@ with tab_enum:
 # A partial save lives on the DEVICE it was taken on, so it can only be resumed
 # from that tablet. This tab answers the operational question: how many are out
 # there, which tablet is each sitting on, and who last touched it.
+# ============================================================================
+with tab_attend:
+    # Planned (schedule tab) vs checked in (start-of-day form) vs the lists
+    # actually called, for one day. Whole roster: the filters at the top do
+    # not apply. See attendance.py.
+    st.subheader("🗓️ Attendance and lists")
+    _raw_chk, _raw_sch, _ameta = attendance.load_attendance()
+    if not _ameta["ok"]:
+        st.warning(f"Check-in Sheet: {_ameta['msg']}")
+    elif _ameta["msg"]:
+        st.caption(f"Check-in Sheet: {_ameta['msg']}")
+    _sch = attendance.clean_schedule(_raw_sch, name_map)
+    _chk = attendance.clean_checkins(_raw_chk, name_map)
+    _today = pd.Timestamp.now(tz="UTC").date()        # Sierra Leone = GMT
+    _days = sorted(set(_sch["date"]) | set(_chk["date"]) | {_today})
+    _past = [d for d in _days if d <= _today]
+    _day = st.selectbox("Day", _days, index=_days.index(_past[-1] if _past else _days[0]),
+                        format_func=lambda d: f"{d:%a %d %b}" + (" (today)" if d == _today else ""),
+                        key="att_day")
+    _pid_list = (summary.drop_duplicates("pid").set_index("pid")["assigned_day"]
+                 if "assigned_day" in summary.columns else pd.Series(dtype=str))
+    _calls = attendance.calls_of_day(subs, _day, _pid_list)
+    _rows = attendance.day_table(_day, _sch, _chk, _calls,
+                                 known=set(name_map.values()) if name_map else None)
+    if _rows.empty:
+        st.info("Nobody planned, checked in or calling on this day.")
+    else:
+        _planned = _rows["planned_list"] != ""
+        _in = _rows["checked_in"] == "✅"
+        flag_tiles([
+            (int(_planned.sum()), "planned", BLUE),
+            (int((_planned & _in).sum()), "planned and checked in", GREEN),
+            (int((_planned & ~_in).sum()), "planned, no check-in", RED),
+            (int(_rows["flag"].str.contains("another list").sum()), "calling another list", ORANGE),
+            (int((~_planned).sum()), "not on the schedule", BLUE),
+        ])
+        ch.dataframe(_rows, hide_index=True, width="stretch",
+                     column_config={"late_min": st.column_config.NumberColumn(format="%d"),
+                                    "flag": st.column_config.Column(
+                                        help="🔴 no check-in · 🟠 calls on another list · "
+                                             "🔵 not on the schedule · 🟡 late · "
+                                             "⚪ name not in the enumerators tab")})
+        _off = attendance.off_list_calls(_rows, _calls)
+        with st.expander(f"🟠 Calls on another list ({len(_off)})"):
+            st.caption("Each call on a pid whose list differs from the caller's planned "
+                       "list. A callback, a case sent back from Supervisor review or a "
+                       "pid you assigned can be a good reason.")
+            ch.dataframe(_off, hide_index=True, width="stretch")
+
 # ============================================================================
 with tab_partial:
     st.subheader("💾 Partial saves")

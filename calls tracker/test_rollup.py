@@ -250,6 +250,49 @@ def check_reopen(fails):
     ok("keep trying is listed in To be revised", list(reactivated(k, o, now)["pid"]) == ["B"])
 
 
+def check_attendance(fails):
+    """attendance.py: planned vs checked in vs the lists actually called."""
+    import warnings
+    warnings.filterwarnings("ignore", message="No runtime found")
+    import datetime as dt
+    import attendance as at
+    from enumerators import alias_map
+    ok = lambda name, cond: None if cond else fails.append(f"[attendance] {name}")
+    ok("list spellings meet", at.list_key("12 Nov D4") == at.list_key("12Nov-D4")
+       == at.list_key("12nov-d4") and at.list_key("03Nov-D5") == at.list_key("3Nov-D5"))
+    roster = pd.DataFrame({"name": ["Salieu Nabay", "Ann B", "Cy D", "Di E"],
+                           "also_typed_as": ["Sallieu Nabay", "", "", ""], "supervisor": ""})
+    amap = alias_map(roster)
+    sch = at.clean_schedule(pd.DataFrame({
+        "date": ["2026-11-16"] * 3, "enumerator": ["Salieu Nabay", "Ann B", "Cy D"],
+        "team": "A1", "shift_start": ["14:00", "7:00", "7:00"], "shift_end": ["21:00", "14:00", "14:00"],
+        "list": ["12Nov-D4", "12Nov-D4", "12Nov-D5"]}), amap)
+    chk = at.clean_checkins(pd.DataFrame({
+        "today": ["16-Nov-2026", "16-Nov-2026", "16-Nov-2026"],
+        "starttime": ["2026-11-16T13:50:00.000+00", "2026-11-16T07:40:00.000+00", "2026-11-16T09:00:00.000+00"],
+        "enum_name": ["Sallieu Nabay", "Ann B", "Di E"],
+        "sod_arrival_hhmm": ["13:50", "07:40", "09:00"], "sod_late_min": ["", "40", ""],
+        "sod_shift_lab": ["14:00-21:00", "7:00-14:00", "7:00-14:00"]}), amap)
+    day = dt.date(2026, 11, 16)
+    subs = pd.DataFrame({
+        "enum_name": ["Salieu Nabay", "Salieu Nabay", "Cy D", "Ann B"],
+        "pid": ["p1", "p9", "p5", "p1"], "callcode": "2_NA",
+        "endtime": ["2026-11-16T15:00:00.000Z", "2026-11-16T15:10:00.000Z",
+                    "2026-11-16T08:00:00.000Z", "2026-11-15T08:00:00.000Z"]})
+    pid_list = pd.Series({"p1": "12Nov-D4", "p9": "13Nov-D5", "p5": "12Nov-D5"})
+    calls = at.calls_of_day(subs, day, pid_list)
+    ok("only that day's calls", len(calls) == 3)
+    t = at.day_table(day, sch, chk, calls, known=set(amap.values())).set_index("enumerator")
+    ok("check-in spelling matched to the schedule", t.at["Salieu Nabay", "checked_in"] == "✅")
+    ok("one call on list, one on another", t.at["Salieu Nabay", "on_list"] == 1
+       and t.at["Salieu Nabay", "other_list"] == 1 and "another list" in t.at["Salieu Nabay", "flag"])
+    ok("calling without check-in", "Calling without check-in" in t.at["Cy D", "flag"])
+    ok("late flagged", "Late 40" in t.at["Ann B", "flag"] and "No check-in" not in t.at["Ann B", "flag"])
+    ok("checked in but not planned", "Not on the schedule" in t.at["Di E", "flag"])
+    off = at.off_list_calls(t.reset_index(), calls)
+    ok("off-list call listed", list(off["pid"]) == ["p9"])
+
+
 def check_baseline(s, fails):
     got = {"rows": len(s), "completed": int((s["is_complete"] == 1).sum()),
            "ever_attempted": int(s["ever_attempted"].sum()),
@@ -300,7 +343,8 @@ def main():
     check_enumerator_names(fails)
     check_assignments(fails)
     check_reopen(fails)
-    print("supervisor review rules + enumerator names + assignments + reopen: checked")
+    check_attendance(fails)
+    print("supervisor review rules + enumerator names + assignments + reopen + attendance: checked")
 
     # --- fixture: invariants + baseline + determinism -------------------------
     # The demo fixture is real-data-shaped but synthetic. It is NOT in the git
