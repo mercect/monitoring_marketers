@@ -19,18 +19,6 @@ HISTORY_COLS = ["endtime", "enum_name", "survey_type", "callcode", "last_section
                 "rs_section", "tab_id", "rs_tab_id", "final_comment", "comment_sp", "KEY"]
 
 
-def says_closed(open_cases):
-    """Open pids whose own comments say the case is closed ("This is a close
-    case", "closed by supervisor"): in last_comment, rsd_reason or tab_id
-    (where some typed it). Logged with an open code, so the dashboard still
-    lists them as work, until a supervisor closes them for real."""
-    text = pd.Series("", index=open_cases.index)
-    for c in ("last_comment", "rsd_reason", "tab_id"):
-        if c in open_cases.columns:
-            text = text + " " + open_cases[c].fillna("").astype(str)
-    return text.str.contains(r"(?i)\bclosed?\s+case\b|\bcase\s+(?:is\s+)?closed\b|\bclosed\s+by\b", regex=True)
-
-
 def _status_label(status):
     return {"ACTIVE": "ACTIVE — back to the call piles",
             "INACTIVE": "INACTIVE — closed"}.get(status, status)
@@ -173,34 +161,20 @@ def render(summary, subs, open_cases, decisions, dmeta):
             st.caption("🔒 Read only — no `editor_password` set.")
 
     keys = rv.status_keys(subs)
-    vq = rv.validation_queue(summary, decisions, keys)
-    # Open cases to decide on: the Resume and Review queues, plus any open pid
-    # whose comments SAY it is closed ("This is a close case") although it was
-    # logged with an open code. Those need a supervisor to close them for real.
-    _said = says_closed(open_cases)
-    dq = open_cases[(open_cases.get("resume_queue", 0) == 1)
-                    | (open_cases["action_bucket"] == "Review") | _said].copy()
-    dq["says_closed"] = _said.reindex(dq.index, fill_value=False)
-    dq["queue"] = [" + ".join(q for q, on in (("▶️ Resume", r == 1), ("🔎 Review", b == "Review"),
-                                              ("💬 says closed", c)) if on)
-                   for r, b, c in zip(dq.get("resume_queue", 0), dq["action_bucket"],
-                                      dq["says_closed"])]
+    todo = to_validate(summary, open_cases, decisions, keys)
 
     # Any closed pid can be put back to work, except a completed interview.
     _st = summary["current_status"].astype(str).str.upper()
     _done = pd.to_numeric(summary.get("is_complete", 0), errors="coerce").fillna(0) == 1
     closed = summary[(_st == "INACTIVE") & ~_done].copy()
 
-    section = st.radio("Section", [f"✔ Validate closures ({len(vq)})",
-                                   f"⚖ Decide open cases ({len(dq)})",
+    section = st.radio("Section", [f"✔ To validate ({len(todo)})",
                                    f"🔁 Reopen a closed case ({len(closed)})",
                                    f"📜 Log ({len(decisions)})"],
                        horizontal=True, label_visibility="collapsed", key="review_section")
 
     if section.startswith("✔"):
-        _validate(vq, summary, subs, can_save)
-    elif section.startswith("⚖"):
-        _decide(dq, summary, subs, keys, can_save)
+        _validate(todo, summary, subs, can_save)
     elif section.startswith("🔁"):
         _reopen(closed, summary, subs, keys, can_save)
     else:
@@ -208,65 +182,112 @@ def render(summary, subs, open_cases, decisions, dmeta):
 
 
 # -----------------------------------------------------------------------------
-def _validate(vq, summary, subs, can_save):
-    if vq.empty:
-        st.info("Nothing waiting for validation.")
+# Which cases need validating (for now; completes get their own check later):
+#   1. any pid an ENUMERATOR closed with a 0_ code, not validated yet
+#   2. any open pid in ▶️ To be resumed (partial saved)
+#   3. any open pid in 🔎 To be reviewed (hard to reach)
+# A closed pid is never open, so group 1 never overlaps 2 or 3; a pid can be
+# in both 2 and 3, and then shows both labels.
+CLOSED_BY_ENUM = "🛑 Closed by enumerator (0_)"
+TO_RESUME = "▶️ To be resumed (partial saved)"
+TO_REVIEW = "🔎 To be reviewed"
+GROUPS = [CLOSED_BY_ENUM, TO_RESUME, TO_REVIEW]
+LIST_COLS = ["pid", "why", "callcode", "enumerator", "last_submission_time",
+             "last_comment", "flag"]
+
+
+def to_validate(summary, open_cases, decisions, keys):
+    """One row per pid to validate, with `why` (its group or groups), `kind`
+    ("closure" for group 1, "open" for 2 and 3) and `ref_key`, the KEY of the
+    submission a decision refers to."""
+    vq = rv.validation_queue(summary, decisions, keys)
+    closures = vq[vq["kind"] == "closure"].rename(columns={"current_callcode": "callcode"})
+    closures = closures.assign(why=CLOSED_BY_ENUM)
+
+    oc = open_cases
+    res = pd.to_numeric(oc.get("resume_queue", pd.Series(0, index=oc.index)),
+                        errors="coerce").fillna(0) == 1
+    rev = oc["action_bucket"] == "Review"
+    opn = oc[res | rev].copy()
+    opn["why"] = [" + ".join(g for g, on in ((TO_RESUME, r), (TO_REVIEW, b)) if on)
+                  for r, b in zip(res[res | rev], rev[res | rev])]
+    opn["kind"] = "open"
+    opn["flag"] = ""
+    opn["ref_key"] = opn["pid"].map(keys).fillna("")
+    if "enumerator" not in opn.columns and "enumerator" in summary.columns:
+        opn["enumerator"] = opn["pid"].map(summary.drop_duplicates("pid")
+                                           .set_index("pid")["enumerator"])
+
+    keep = LIST_COLS + ["kind", "ref_key"]
+    out = pd.concat([closures[[c for c in keep if c in closures.columns]],
+                     opn[[c for c in keep if c in opn.columns]]], ignore_index=True)
+    out = out.fillna("")
+    # Group order first, then the oldest last activity first (waiting longest).
+    out["_g"] = out["why"].map(lambda w: next((i for i, g in enumerate(GROUPS)
+                                               if w.startswith(g)), 9))
+    out = out.sort_values(["_g", "last_submission_time"], kind="stable")
+    return out.drop(columns="_g").reset_index(drop=True)
+
+
+def _validate(todo, summary, subs, can_save):
+    if todo.empty:
+        st.info("Nothing to validate.")
         return
-    n_flag = int(vq["flag"].ne("").sum())
+
+    # Group filter, with how many are waiting in each.
+    counts = {g: int(todo["why"].str.contains(g, regex=False).sum()) for g in GROUPS}
+    pick = st.segmented_control(
+        "Show", ["All"] + GROUPS, default="All", key="review_group",
+        format_func=lambda g: f"All ({len(todo)})" if g == "All" else f"{g} ({counts[g]})",
+        label_visibility="collapsed")
+    view = todo if pick in (None, "All") else todo[todo["why"].str.contains(pick, regex=False)]
+    if view.empty:
+        st.info("Nothing in this group.")
+        return
+    n_flag = int(view["flag"].ne("").sum())
     if n_flag:
-        st.warning(f"⚠️ {n_flag} closed with a supervisor-only code")
+        st.warning(f"⚠️ {n_flag} closed by an enumerator with a supervisor-only code")
 
-    show = vq.sort_values(["flag", "kind", "last_submission_time"],
-                          ascending=[False, True, True])
-    cols = [c for c in ["pid", "kind", "current_callcode", "enumerator",
-                        "last_submission_time", "last_comment", "flag"] if c in show.columns]
-    table = show[cols].reset_index(drop=True)
-    table.insert(0, "select", False)
-
-    kind_filter = st.radio("Show", ["All", "Closures (0_)", "Completes (1)"],
-                           horizontal=True, key="review_vkind")
-    if kind_filter.startswith("Closures"):
-        table = table[table["kind"] == "closure"]
-    elif kind_filter.startswith("Completes"):
-        table = table[table["kind"] == "complete"]
-
-    edited = ch.data_editor(
-        table, hide_index=True, width="stretch", key=f"review_vtable_{kind_filter}",
-        disabled=[c for c in table.columns if c != "select"],
-        column_config={"select": st.column_config.CheckboxColumn("✔", width="small")})
-    picked = edited.loc[edited["select"], "pid"].tolist()
-    if st.button(f"✔ Confirm selected ({len(picked)})", disabled=not (can_save and picked),
-                 help="Confirms each selected pid with the code it already has."):
-        by_pid = vq.set_index("pid")
-        rows = [_entry(p, "validation", "confirmed",
-                       str(by_pid.at[p, "current_callcode"]).strip(), "",
-                       by_pid.at[p, "ref_key"]) for p in picked]
-        _save(rows, f"{len(rows)} confirmation(s)")
+    cols = [c for c in LIST_COLS if c in view.columns and (c != "flag" or n_flag)]
+    table = view[cols].reset_index(drop=True)
+    st.caption("Click a row to review that pid below.")
+    sel = ch.dataframe(table, hide_index=True, width="stretch", on_select="rerun",
+                       selection_mode="single-row", key=f"review_list_{pick}")
+    rows = sel.selection.rows if sel is not None else []
+    clicked = table.at[rows[0], "pid"] if rows else None
 
     st.divider()
     st.markdown("#### Review one pid")
-    labels = {f"{p} · {c} · {e}": p for p, c, e in
-              zip(show["pid"], show["current_callcode"], show.get("enumerator", ""))}
-    choice = st.selectbox("Pid", list(labels), key="review_vpid")
+    labels = {f"{p} · {w} · {c}": p for p, w, c in
+              zip(view["pid"], view["why"], view["callcode"])}
+    pids = list(labels.values())
+    # The dropdown follows the clicked row: a new click gives it a new key, so
+    # it starts again on that row.
+    choice = st.selectbox("Pid", list(labels), key=f"review_pid_{pick}_{clicked}",
+                          index=pids.index(clicked) if clicked in pids else 0)
     pid = labels[choice]
-    rec = vq[vq["pid"] == pid].iloc[0]
+    rec = view[view["pid"] == pid].iloc[0]
+    st.markdown(f"**Why it needs validating:** {rec['why']}")
     _case_facts(summary, subs, pid)
     _observations(subs, pid)
+    if rec["kind"] == "closure":
+        _closure_form(pid, rec, can_save)
+    else:
+        _open_form(pid, rec, can_save)
 
-    current = str(rec["current_callcode"]).strip()
-    # Where the case goes: back to the call piles (ACTIVE) or closed (INACTIVE).
-    # A completed interview can only stay INACTIVE (its code can be corrected).
-    statuses = (["INACTIVE"] if rec["kind"] == "complete" else ["ACTIVE", "INACTIVE"])
-    status = st.radio("Status after review", statuses, index=None, horizontal=True,
-                      key=f"review_vstatus_{pid}", format_func=_status_label)
+
+def _closure_form(pid, rec, can_save):
+    """An enumerator's 0_ closure: confirm it, correct the code, or send it
+    back to the call piles."""
+    current = str(rec["callcode"]).strip()
+    status = st.radio("Status after review", ["ACTIVE", "INACTIVE"], index=None,
+                      horizontal=True, key=f"review_vstatus_{pid}", format_func=_status_label)
     code, act = "", ""
     if status == "INACTIVE":
         options = [current] + [c for c in rv.CLOSE_CODES if c != current]
         code = st.selectbox("Closing code", options, key=f"review_vcode_{pid}",
-                            format_func=lambda c: (f"{c} — keep as completed" if c == "1"
-                                                   else _code_label(c)
-                                                   + (" (as the enumerator coded it)"
-                                                      if c == current else "")))
+                            format_func=lambda c: _code_label(c)
+                            + (" (as the enumerator coded it)" if c == current else ""))
         act = "confirmed" if code == current else "corrected"
     elif status == "ACTIVE":
         act = "sent_back"
@@ -282,52 +303,9 @@ def _validate(vq, summary, subs, can_save):
                       comment, rec["ref_key"])], f"{pid} ({status})")
 
 
-# -----------------------------------------------------------------------------
-def _decide(dq, summary, subs, keys, can_save):
-    if dq.empty:
-        st.info("Nothing in the Resume or Review queues.")
-        return
-    n_said = int(dq["says_closed"].sum()) if "says_closed" in dq.columns else 0
-    if n_said:
-        st.warning(f"💬 {n_said} open pid(s) have a comment saying the case is closed, "
-                   "but were logged with an open code. Close them here if that is right.")
-    only = st.radio("Show", ["All", f"💬 Says closed ({n_said})"], horizontal=True,
-                    key="review_dfilter")
-    view = dq[dq["says_closed"]] if only.startswith("💬") else dq
-    cols = [c for c in ["pid", "queue", "enumerator", "callcode", "total_attempts",
-                        "days_open", "last_section", "tab_id", "review_reason",
-                        "last_comment", "supervisor_note"] if c in view.columns]
-    table = view[cols].reset_index(drop=True)
-    table.insert(0, "select", False)
-    edited = ch.data_editor(
-        table, hide_index=True, width="stretch", key=f"review_dtable_{only}",
-        disabled=[c for c in table.columns if c != "select"],
-        column_config={"select": st.column_config.CheckboxColumn("✔", width="small")})
-    picked = edited.loc[edited["select"], "pid"].tolist()
-
-    # Close several at once: one code and one comment for every ticked pid.
-    if picked:
-        st.markdown(f"**Close {len(picked)} selected pid(s)**")
-        bcode = st.selectbox("Close with", list(rv.CLOSE_CODES), format_func=_code_label,
-                             key="review_bulk_code")
-        bcom = st.text_area("Comment (required, saved with each)", key="review_bulk_com",
-                            placeholder="Why these are being closed")
-        if st.button(f"🗂 Close {len(picked)} selected", disabled=not can_save or not bcom.strip(),
-                     key="review_bulk_close"):
-            rows = [_entry(p, "decision", "closed", bcode, bcom, keys.get(p, ""))
-                    for p in picked]
-            _save(rows, f"{len(rows)} closure(s)")
-    else:
-        st.caption("Tick pids to close several at once, or decide one pid below.")
-
-    st.markdown("#### Decide one pid")
-    labels = {f"{p} · {q} · {c}": p for p, q, c in zip(dq["pid"], dq["queue"], dq["callcode"])}
-    choice = st.selectbox("Pid", list(labels), key="review_dpid")
-    pid = labels[choice]
-    _case_facts(summary, subs, pid)
-    _observations(subs, pid)
-
-    # Where the case goes: back to the call piles (ACTIVE) or closed (INACTIVE).
+def _open_form(pid, rec, can_save):
+    """An open pid (to be resumed / to be reviewed): keep it in the call piles
+    with an instruction, or close it with a 0_ code."""
     status = st.radio("Status after review", ["ACTIVE", "INACTIVE"], index=None,
                       horizontal=True, key=f"review_dstatus_{pid}", format_func=_status_label)
     code = ""
@@ -341,7 +319,7 @@ def _decide(dq, summary, subs, keys, can_save):
     if st.button("💾 Save", key=f"review_dsave_{pid}",
                  disabled=not can_save or not status or not comment.strip()):
         act = "closed" if status == "INACTIVE" else "keep_trying"
-        _save([_entry(pid, "decision", act, code, comment, keys.get(pid, ""))],
+        _save([_entry(pid, "decision", act, code, comment, rec["ref_key"])],
               f"{pid} ({status})")
 
 
