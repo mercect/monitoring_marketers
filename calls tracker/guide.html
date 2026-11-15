@@ -205,7 +205,7 @@ footer { color: var(--muted); font-size: 13px; }
 
     <section id="summary">
       <h2>🧾 Calls summary</h2>
-      <p>The first page reads in the order you work: what to do now, what went wrong, then how far along the survey is.</p>
+      <p>The first page reads in the order you work: what to do now, what went wrong, then how far each list has got.</p>
 
       <h3>🎯 Do now</h3>
       <p>The open pids, grouped by what to do with them. <strong>Top to bottom is the priority order.</strong> Each line names the list in ✅ Active pids to open; the tiles on the right are the counts to watch, most urgent first.</p>
@@ -237,30 +237,19 @@ footer { color: var(--muted); font-size: 13px; }
       </table></div>
       <p>Closures waiting for validation are counted in 🛂 Supervisor review.</p>
 
-      <h3>📞 Today</h3>
-      <p>The pace of the day, with the date in the heading. "Today" is the day of the latest submission, so in the morning, before anyone has called, it still shows the previous day under that day's date.</p>
-      <div class="tablebox"><table>
-        <thead><tr><th>Tile</th><th>What it counts</th></tr></thead>
-        <tbody>
-          <tr><td>Calls made</td><td>Every call logged that day (supervisor entries do not count)</td></tr>
-          <tr><td>Respondents reached</td><td>Calls where the respondent was on the line</td></tr>
-          <tr><td>Interviews completed</td><td>Interviews finished that day</td></tr>
-        </tbody>
-      </table></div>
-      <p>Below the tiles, the same three numbers per enumerator, most calls first.</p>
-
       <h3>📈 Progress</h3>
+      <p>Same layout as Do now: one line for all lists together, then one per call list, newest first, with the day it was first called.</p>
       <div class="tablebox"><table>
         <thead><tr><th>Tile</th><th>What it counts</th></tr></thead>
         <tbody>
-          <tr><td>Respondents in the sample</td><td>Everyone signed up in the selected batch</td></tr>
-          <tr><td>Ever attempted</td><td>Pids dialled at least once, and how many not yet</td></tr>
-          <tr><td>Completed of sample</td><td>Completions out of everyone in the sample</td></tr>
-          <tr><td>Completed of contacted</td><td>Completions out of the pids who ever picked up</td></tr>
-          <tr><td>Total attempts</td><td>All calls, and the average per attempted pid</td></tr>
-          <tr><td>Finished</td><td>Completed and closed pids, by reason</td></tr>
+          <tr><td>In the sample (always grey)</td><td>Pids on the list</td></tr>
+          <tr><td>Attempted · overall</td><td>Share of the list dialled at least once</td></tr>
+          <tr><td>Reached · overall</td><td>Share who picked up the phone at least once</td></tr>
+          <tr><td>Completed · overall</td><td>Share with a completed interview</td></tr>
+          <tr><td>Attempted / reached / completed · today</td><td>The same three, counting only today's calls (Sierra Leone time)</td></tr>
         </tbody>
       </table></div>
+      <p>Every share is of everyone on the list, not only of those reached. The small number under each share is the count of pids.</p>
     </section>
 
     <section id="attendance">

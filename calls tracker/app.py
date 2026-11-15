@@ -37,7 +37,7 @@ import assign
 import attendance
 import column_help as ch
 import enumerators
-from calllist import assigned_day_number, lists_due, with_list_order
+from calllist import assigned_day_number, first_call_date, lists_due, with_list_order
 import review
 import review_tab
 
@@ -129,7 +129,7 @@ def flag_tiles(items):
                 + "".join(tiles) + "</div>", unsafe_allow_html=True)
 
 
-def category_row(title, total_n, where, items):
+def category_row(title, total_n, where, items, tile_w=165):
     """One line of Do now: the category (name, total, list to open) as a fixed-
     width label, then its count tiles, all the same size so the rows line up.
     Wraps on a narrow screen. Same colour rules as flag_tiles."""
@@ -137,7 +137,7 @@ def category_row(title, total_n, where, items):
         n, label, colour = item[:3]
         hint = item[3] if len(item) > 3 else ""
         c = colour if n else GREY
-        return (f'<div style="flex:0 0 165px;box-sizing:border-box;border:1px solid {c};'
+        return (f'<div style="flex:0 0 {tile_w}px;box-sizing:border-box;border:1px solid {c};'
                 f'border-left:5px solid {c};border-radius:8px;padding:6px 12px;background:{c}1A">'
                 f'<div style="font-size:1.45rem;font-weight:700;line-height:1.2;color:{c}">{n}</div>'
                 f'<div style="font-size:0.85rem;opacity:.85;line-height:1.25">{label}</div>'
@@ -145,8 +145,9 @@ def category_row(title, total_n, where, items):
                    if hint else "") + '</div>')
     head = (f'<div style="flex:0 0 200px;box-sizing:border-box;padding:4px 4px 4px 0">'
             f'<div style="font-size:1.05rem;font-weight:700;line-height:1.3">{title}</div>'
-            f'<div style="font-size:1.6rem;font-weight:700;line-height:1.2">{total_n}'
-            f'<span style="font-size:0.85rem;font-weight:400;opacity:.7"> pids</span></div>'
+            + (f'<div style="font-size:1.6rem;font-weight:700;line-height:1.2">{total_n}'
+               f'<span style="font-size:0.85rem;font-weight:400;opacity:.7"> pids</span></div>'
+               if total_n is not None else "") +
             f'<div style="font-size:0.75rem;opacity:.6">{where}</div></div>')
     st.markdown('<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;'
                 'margin:2px 0 10px;padding-bottom:10px;border-bottom:1px solid rgba(128,128,128,.18)">'
@@ -230,6 +231,36 @@ def todays_pace(subs, day):
               "completed": int(calls.loc[calls["_done"], "pid"].nunique())}
     return totals, per[cols]
 
+
+
+def list_progress(summary_view, subs, day):
+    """Progress per call list (assigned_day), newest list first, after an
+    "All lists" row: pids in the sample, and the share attempted, reached
+    (picked up at least once) and completed, overall and on `day`."""
+    t = _to_dt(subs["endtime"] if "endtime" in subs.columns else pd.Series("", index=subs.index))
+    if "starttime" in subs.columns:
+        t = t.fillna(_to_dt(subs["starttime"]))
+    d = subs.loc[t.dt.date == day] if len(subs) else subs
+    calls = d[is_attempt_row(d)] if len(d) else d
+    today = {"attempted": set(calls.get("pid", [])),
+             "reached": set(calls.loc[is_contact_row(calls), "pid"]) if len(calls) else set(),
+             "completed": set(calls.loc[calls["callcode"].astype(str).str.strip().eq("1"), "pid"])
+             if len(calls) and "callcode" in calls.columns else set()}
+    overall = {"attempted": "ever_attempted", "reached": "ever_picked_up", "completed": "is_complete"}
+    lists = summary_view["assigned_day"].fillna("").astype(str).str.strip()         if "assigned_day" in summary_view.columns else pd.Series("", index=summary_view.index)
+    groups = [("All lists", summary_view)]
+    for name in sorted({v for v in lists if v}, key=_list_key, reverse=True):
+        groups.append((name, summary_view[lists == name]))
+    rows = []
+    for name, g in groups:
+        n = len(g)
+        row = {"list": name, "pids": n}
+        for k, col in overall.items():
+            v = pd.to_numeric(g.get(col, 0), errors="coerce").fillna(0)
+            row[f"{k}_all"] = int((v == 1).sum())
+            row[f"{k}_today"] = int(g["pid"].isin(today[k]).sum())
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 # Enumerators working at once = how many pids are handed out together. Those
 # are tried at about the same time, so within one round the order can blur;
@@ -686,52 +717,35 @@ with tab_summary:
                      .rename(columns={"first_caller": "called_by"}), width="stretch",
                      hide_index=True)
 
-    # ---- 3. TODAY: the pace of the day -----------------------------------------
-    # "Today" is the day of the latest submission (the dashboard's "now"), named
-    # in the heading so a morning view of yesterday's work is never mislabelled.
+    # ---- 3. PROGRESS: per call list, overall and today -------------------------
+    # Same layout as Do now: one line per list (newest first, after all lists
+    # together). Pids in the sample are always grey (a size, not a signal);
+    # then the share attempted, reached (picked up at least once) and
+    # completed, over the whole survey and today. Shares are of everyone on
+    # the list (unconditional).
+    _prog_day = pd.Timestamp.now(tz="UTC").date()          # Sierra Leone = GMT
     _subs_view = subs[subs["pid"].isin(keep_pids)] if keep_pids is not None else subs
-    _pace, _per = todays_pace(_subs_view, _now)
+    _prog = list_progress(summary_view, _subs_view, _prog_day)
     st.divider()
-    st.subheader(f"📞 Today — {_now:%d %b}" if pd.notna(_now) else "📞 Today")
-    flag_tiles([(_pace["calls"], "calls made", BLUE),
-                (_pace["reached"], "respondents reached", BLUE),
-                (_pace["completed"], "interviews completed", GREEN)])
-    if len(_per):
-        ch.dataframe(_per, width="stretch", hide_index=True)
+    st.subheader(f"📈 Progress — today is {_prog_day:%a %d %b}")
 
-    # ---- 4. PROGRESS: how far through the sample --------------------------------
-    st.divider()
-    st.subheader("📈 Progress")
-    flag_tiles([
-        (sk["respondents"], "respondents in the sample", BLUE),
-        (f"{ea_pct}%", f"ever attempted ({sk['ever_attempted']}) · "
-                       f"{sk['never_attempted']} not yet", BLUE),
-        (f"{sk['completion_rate']}%", f"completed of sample ({sk['completed']} of "
-                                      f"{sk['respondents']})", GREEN),
-        (f"{done_of_contacted}%", f"completed of contacted ({sk['completed']} of "
-                                  f"{n_picked} who picked up)", GREEN),
-        (total_att, f"total attempts ({avg_att} per attempted pid)", BLUE),
-    ])
-
-    # Finished pids by reason. Completion is absorbing, so a pid that finished
-    # and was then rung again counts as completed on is_complete even though its
-    # LAST callcode is a call outcome; keying on the callcode would lose those.
-    _inact_rows = summary_view[
-        summary_view["current_status"].astype(str).str.upper() == "INACTIVE"]
-    inactive_cc = _inact_rows["current_callcode"].astype(str).str.strip()
-    _is_done = _inact_rows["is_complete"] == 1
-    _n_inact = len(inactive_cc)
-    _inact_pct = round(100 * _n_inact / total) if total else 0
-    st.markdown(f"**Finished: {_n_inact} pids ({_inact_pct}%)**")
-    _inact = [("1", "completed"), ("0_R", "refusal (0_R)"), ("0_UN", "ineligible (0_UN)"),
-              ("0_IN", "incorrect respondent (0_IN)"), ("0_WN", "wrong number (0_WN)")]
-    # _other is the REMAINDER, so the tiles always add up to the finished total.
-    _pids = [int(_is_done.sum())]
-    _pids += [int(((inactive_cc == code) & ~_is_done).sum()) for code, _ in _inact[1:]]
-    _pids.append(max(_n_inact - sum(_pids), 0))
-    _what = [d for _, d in _inact] + ["other closure"]
-    flag_tiles([(n, w, GREEN if i == 0 else BLUE)
-                for i, (n, w) in enumerate(zip(_pids, _what))])
+    def _pc(k, n):
+        return f"{round(100 * k / n)}%" if n else "–"
+    for _p in _prog.itertuples():
+        _first = ""
+        if _p.list != "All lists":
+            _fc = first_call_date(summary_view[summary_view["assigned_day"].astype(str).str.strip()
+                                               == _p.list].head(1))
+            _first = f"first call {_fc.iloc[0]:%a %d %b}" if len(_fc) and pd.notna(_fc.iloc[0]) else ""
+        category_row(f"📋 {_p.list}", None, _first or "every list together", [
+            (_p.pids, "in the sample", GREY),
+            *[(_pc(getattr(_p, f"{k}_{w}"), _p.pids), k,
+               (GREEN if k == "completed" else BLUE) if getattr(_p, f"{k}_{w}") else GREY,
+               f"{'overall' if w == 'all' else 'today'} · {getattr(_p, f'{k}_{w}')}")
+              for w in ("all", "today") for k in ("attempted", "reached", "completed")],
+        ], tile_w=118)
+    st.caption("Shares are of everyone on the list. Reached = picked up the phone at least once. "
+               "Today = calls made today (Sierra Leone time).")
 
 
 # ============================================================================
