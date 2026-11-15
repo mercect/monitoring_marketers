@@ -119,14 +119,38 @@ def flag_tiles(items):
         hint = item[3] if len(item) > 3 else ""
         c = colour if n else GREY
         tiles.append(
-            f'<div style="border:1px solid {c};border-left:6px solid {c};'
-            f'border-radius:8px;padding:8px 18px;min-width:170px;background:{c}1A">'
-            f'<div style="font-size:1.9rem;font-weight:700;line-height:1.15;color:{c}">{n}</div>'
-            f'<div style="font-size:0.95rem;opacity:.85">{label}</div>'
-            + (f'<div style="font-size:0.78rem;opacity:.6;margin-top:2px">{hint}</div>'
+            f'<div style="box-sizing:border-box;border:1px solid {c};border-left:5px solid {c};'
+            f'border-radius:8px;padding:6px 12px;min-width:165px;max-width:260px;background:{c}1A">'
+            f'<div style="font-size:1.45rem;font-weight:700;line-height:1.2;color:{c}">{n}</div>'
+            f'<div style="font-size:0.85rem;opacity:.85;line-height:1.25">{label}</div>'
+            + (f'<div style="font-size:0.72rem;opacity:.6;margin-top:1px">{hint}</div>'
                if hint else "") + '</div>')
-    st.markdown('<div style="display:flex;gap:12px;flex-wrap:wrap;margin:2px 0 12px">'
+    st.markdown('<div style="display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 12px">'
                 + "".join(tiles) + "</div>", unsafe_allow_html=True)
+
+
+def category_row(title, total_n, where, items):
+    """One line of Do now: the category (name, total, list to open) as a fixed-
+    width label, then its count tiles, all the same size so the rows line up.
+    Wraps on a narrow screen. Same colour rules as flag_tiles."""
+    def tile(item):
+        n, label, colour = item[:3]
+        hint = item[3] if len(item) > 3 else ""
+        c = colour if n else GREY
+        return (f'<div style="flex:0 0 165px;box-sizing:border-box;border:1px solid {c};'
+                f'border-left:5px solid {c};border-radius:8px;padding:6px 12px;background:{c}1A">'
+                f'<div style="font-size:1.45rem;font-weight:700;line-height:1.2;color:{c}">{n}</div>'
+                f'<div style="font-size:0.85rem;opacity:.85;line-height:1.25">{label}</div>'
+                + (f'<div style="font-size:0.72rem;opacity:.6;margin-top:1px">{hint}</div>'
+                   if hint else "") + '</div>')
+    head = (f'<div style="flex:0 0 200px;box-sizing:border-box;padding:4px 4px 4px 0">'
+            f'<div style="font-size:1.05rem;font-weight:700;line-height:1.3">{title}</div>'
+            f'<div style="font-size:1.6rem;font-weight:700;line-height:1.2">{total_n}'
+            f'<span style="font-size:0.85rem;font-weight:400;opacity:.7"> pids</span></div>'
+            f'<div style="font-size:0.75rem;opacity:.6">{where}</div></div>')
+    st.markdown('<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;'
+                'margin:2px 0 10px;padding-bottom:10px;border-bottom:1px solid rgba(128,128,128,.18)">'
+                + head + "".join(tile(i) for i in items) + "</div>", unsafe_allow_html=True)
 
 
 def queue_flags(key, rows, red=None):
@@ -581,11 +605,7 @@ with tab_summary:
     n_skipped = int(summary_view["pid"].isin(_skipped.index).sum())
 
     def _category(title, total_n, items, where):
-        left, right = st.columns([1.4, 5])
-        with left:
-            st.markdown(f"**{title}**  \n{total_n} pids · _{where}_")
-        with right:
-            flag_tiles(items)
+        category_row(title, total_n, where, items)
 
     st.subheader(f"🎯 Do now — {actionable} open pids ({pct}% of {total})")
     _category("⏰ To follow up", n_followup,
