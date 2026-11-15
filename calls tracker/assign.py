@@ -11,7 +11,7 @@
 #   - assigned but not called within LATE_MINUTES
 #   - called without being assigned (only after assignments started)
 #   - first called by someone other than the enumerator it was assigned to
-# Assigning out of order (skipping: a lower ordering in the same call list
+# Assigning out of order (skipping: a lower call_order in the same call list
 # still waiting) is allowed, but the dashboard says what is being skipped and
 # requires a reason, which goes into the log (sup_comment). In-order
 # assignments carry no comment.

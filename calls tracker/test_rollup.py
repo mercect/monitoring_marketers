@@ -208,7 +208,7 @@ def check_assignments(fails):
        list(c["unassigned"]["pid"]) == ["D"])
     # out of order: list 06/11 day 4, #1 waiting, ticking #3 skips it; #2 is assigned
     r = pd.DataFrame({"pid": ["p1", "p2", "p3"], "date_recruited": "06/11/2026",
-                      "assigned_day": "4", "ordering": ["1", "2", "3"],
+                      "assigned_list": "4", "call_order": ["1", "2", "3"],
                       "case_state": "Not assigned"})
     gaps = assign.out_of_order(["p3"], r, {"p2"})
     ok("ticking #3 while #1 waits is out of order", list(gaps) == ["p3"] and "p1" in gaps["p3"][0])
@@ -304,16 +304,16 @@ def check_lists_due(fails):
     ok = lambda name, cond: None if cond else fails.append(f"[lists due] {name}")
     r = pd.DataFrame({"pid": ["a", "b", "c", "d", "e"],
                       "date_recruited": ["12/11/2026", "12/11/2026", "12/11/2026", "13/11/2026", "01/11/2026"],
-                      "assigned_day": ["12Nov-D4", "12Nov-D4", "12Nov-D5", "13Nov-D4", "4"]})
+                      "assigned_list": ["12Nov-D4", "12Nov-D4", "12Nov-D5", "13Nov-D4", "4"]})
     fc = list(first_call_date(r))
     ok("12Nov-D4 is first called on 16 Nov", fc[0] == dt.date(2026, 11, 16))
     ok("12Nov-D5 on 17 Nov, 13Nov-D4 on 17 Nov", fc[2] == fc[3] == dt.date(2026, 11, 17))
     d16 = lists_due(r, dt.date(2026, 11, 16))
-    ok("on the 16th only 12Nov-D4, 2 left", list(d16["assigned_day"]) == ["12Nov-D4"] and int(d16["left"].iloc[0]) == 2)
+    ok("on the 16th only 12Nov-D4, 2 left", list(d16["assigned_list"]) == ["12Nov-D4"] and int(d16["left"].iloc[0]) == 2)
     d17 = lists_due(r, dt.date(2026, 11, 17))
     ok("on the 17th: today's two lists, then 12Nov-D4 overdue",
-       list(d17["assigned_day"]) == ["12Nov-D5", "13Nov-D4", "12Nov-D4"])
-    ok("old lists are left out", "4" not in set(lists_due(r, dt.date(2026, 11, 17))["assigned_day"]))
+       list(d17["assigned_list"]) == ["12Nov-D5", "13Nov-D4", "12Nov-D4"])
+    ok("old lists are left out", "4" not in set(lists_due(r, dt.date(2026, 11, 17))["assigned_list"]))
 
 
 def check_baseline(s, fails):

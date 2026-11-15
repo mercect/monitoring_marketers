@@ -6,7 +6,7 @@
 #             `today` (date), `enum_name`, `sod_arrival_hhmm` (arrival),
 #             `sod_shift_lab` (shift), `sod_late_min` / `sod_late`, `eod_time`.
 #   schedule  the plan: date | enumerator | team | shift_start | shift_end | list
-#             (one row per person per working day; list as in assigned_day,
+#             (one row per person per working day; list as in assigned_list,
 #             e.g. "12Nov-D4").
 #
 # For one day, every enumerator who was planned, checked in or made a call gets
@@ -150,7 +150,7 @@ def clean_checkins(raw, amap):
 
 def calls_of_day(subs, day, pid_list):
     """Real calls made on `day`: enumerator, pid, time, callcode and the pid's
-    call list (from assigned_day)."""
+    call list (from assigned_list)."""
     cols = ["enumerator", "pid", "time", "callcode", "list", "list_key"]
     if subs is None or subs.empty or "enum_name" not in subs.columns:
         return pd.DataFrame(columns=cols)

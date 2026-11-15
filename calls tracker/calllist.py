@@ -1,7 +1,7 @@
 # calllist.py — call-list order: which list a pid is on, and its place in it.
 # -----------------------------------------------------------------------------
-# Two columns on the data_entry tab define the call lists: `assigned_day`
-# (4 or 5, written "4" or "03Nov-D4") and `ordering` (position in that list,
+# Two columns on the data_entry tab define the call lists: `assigned_list`
+# (4 or 5, written "4" or "03Nov-D4") and `call_order` (position in that list,
 # restarting for each assigned day). Used by the queues in app.py and by the
 # assignment checks in assign.py.
 # -----------------------------------------------------------------------------
@@ -10,12 +10,12 @@ import pandas as pd
 from data_io import parse_dates
 
 
-def assigned_day_number(s):
-    """The call-list day (4 or 5) from `assigned_day`, whichever way the sheet
+def assigned_list_number(s):
+    """The call-list day (4 or 5) from `assigned_list`, whichever way the sheet
     writes it: a plain "4" / "5", "Day 4", or a batch-stamped "03Nov-D4". The
     number AFTER the D is the day; taking the first number instead read
     "03Nov-D4" as day 3 and merged that batch's two lists. Blank when there is
-    no recognisable day. Used for SORTING only: the tables show assigned_day
+    no recognisable day. Used for SORTING only: the tables show assigned_list
     exactly as the sheet writes it."""
     s = pd.Series(s).fillna("").astype(str).str.strip()
     after_d = s.str.extract(r"(?i)(?:d|day)\s*(\d+)\s*$")[0]
@@ -25,18 +25,18 @@ def assigned_day_number(s):
 
 def with_list_order(df):
     """df plus the keys that put pids in CALL-LIST ORDER, from two columns on
-    the data_entry tab: `assigned_day` (4 or 5, which call list the pid is on)
-    and `ordering` (its position in that list; the numbering restarts for each
+    the data_entry tab: `assigned_list` (4 or 5, which call list the pid is on)
+    and `call_order` (its position in that list; the numbering restarts for each
     assigned day). Adds _rec (recruitment date), _day and _ord, so sorting on
     (_rec, _day, _ord) gives each recruitment day's day-4 list, then its day-5
     list, each in order. Guarantees both columns exist to show, blank until the
     sheet has them."""
     out = df.copy()
-    for c in ("assigned_day", "ordering"):
+    for c in ("assigned_list", "call_order"):
         if c not in out.columns:
             out[c] = ""
-    out["_day"] = pd.to_numeric(assigned_day_number(out["assigned_day"]), errors="coerce")
-    out["_ord"] = pd.to_numeric(out["ordering"], errors="coerce")
+    out["_day"] = pd.to_numeric(assigned_list_number(out["assigned_list"]), errors="coerce")
+    out["_ord"] = pd.to_numeric(out["call_order"], errors="coerce")
     if "date_recruited" in out.columns:
         rec = parse_dates(out["date_recruited"])
         rec.index = out.index
@@ -56,10 +56,10 @@ def first_call_date(df):
 
 def lists_due(never_called, today, lookback=3):
     """Never-called pids left on each list due by `today`, one row per list:
-    assigned_day, due (first-call date), left. Lists due today first, then
+    assigned_list, due (first-call date), left. Lists due today first, then
     lists due in the previous `lookback` days that still have pids left
     (overdue). Older lists are left out: they are not today's work."""
-    cols = ["assigned_day", "due", "left"]
+    cols = ["assigned_list", "due", "left"]
     if never_called is None or never_called.empty:
         return pd.DataFrame(columns=cols)
     d = never_called.assign(due=first_call_date(never_called).values)
@@ -67,5 +67,5 @@ def lists_due(never_called, today, lookback=3):
     d = d[(d["due"] <= today) & (d["due"] >= today - pd.Timedelta(days=lookback))]
     if d.empty:
         return pd.DataFrame(columns=cols)
-    out = (d.groupby(["assigned_day", "due"]).size().rename("left").reset_index())
-    return out.sort_values(["due", "assigned_day"], ascending=[False, True]).reset_index(drop=True)[cols]
+    out = (d.groupby(["assigned_list", "due"]).size().rename("left").reset_index())
+    return out.sort_values(["due", "assigned_list"], ascending=[False, True]).reset_index(drop=True)[cols]

@@ -135,7 +135,7 @@ footer { color: var(--muted); font-size: 13px; }
     <section id="basics">
       <h2>Basics</h2>
       <ul>
-        <li><strong>Filter</strong> at the top of the page: <em>Priority list</em>, one or more call lists by their <code>assigned_day</code> (e.g. 12Nov-D4); empty = all lists. Supervisor review, <em>To be revised</em> and Attendance ignore it.</li>
+        <li><strong>Filter</strong> at the top of the page: <em>Priority list</em>, one or more call lists by their <code>assigned_list</code> (e.g. 12Nov-D4); empty = all lists. Supervisor review, <em>To be revised</em> and Attendance ignore it.</li>
         <li><strong>Refresh now</strong> re-reads the Google Sheet. Otherwise the data refreshes by itself every 5 minutes.</li>
         <li><strong>Who is counted.</strong> Only people recruited as <em>Eligible – signed up</em>. Refusals and ineligibles at recruitment cannot be called, so they are left out of every figure.</li>
         <li><strong>"Now".</strong> Overdue and "due in the next hour" are measured against the latest submission in the data, not the clock. During field hours the two are minutes apart.</li>
@@ -154,7 +154,7 @@ footer { color: var(--muted); font-size: 13px; }
       <p><strong>Red rows</strong> in a table are overdue callbacks.</p>
 
       <h3>Call-list order</h3>
-      <p>Each recruitment day's sign-ups are split into two call lists by <code>assigned_day</code> (<code>4</code> or <code>5</code>), and <code>ordering</code> is each pid's position in its list, from the randomisation. First attempts follow this order strictly, and so does the next-attempt pile: the day-4 list before the day-5 list, each in <code>ordering</code>. Both columns come from the data entry sheet.</p>
+      <p>Each recruitment day's sign-ups are split into two call lists by <code>assigned_list</code> (<code>4</code> or <code>5</code>), and <code>call_order</code> is each pid's position in its list, from the randomisation. First attempts follow this order strictly, and so does the next-attempt pile: the day-4 list before the day-5 list, each in <code>call_order</code>. Both columns come from the data entry sheet.</p>
 
       <h3>Shift windows</h3>
       <p><code>shifts_to_try</code> lists the windows nobody has called in yet, or says <em>All tried</em> / <em>None tried</em>. Spread calls across windows: someone who never answers in the morning may answer in the evening.</p>
@@ -261,13 +261,13 @@ footer { color: var(--muted); font-size: 13px; }
         <li><strong>Everyone today:</strong> one row per person who was planned, checked in or made a call that day: planned list and shift, arrival time, calls made, how many were on their planned list (<code>on_list</code>) and how many on other lists (<code>other_list</code>, with which lists).</li>
         <li><strong>Flags:</strong> 🔴 planned but no check-in (or calling without one) · 🟠 calls on another list · 🔵 not on the schedule · 🟡 more than 15 minutes late · ⚪ name not in the <code>enumerators</code> tab (add the spelling to <code>also_typed_as</code>).</li>
         <li><strong>Calls on another list</strong> are listed call by call under the table. A callback, a case sent back from Supervisor review or a pid you assigned can be a good reason, so check before acting.</li>
-        <li>The list of a call is the <code>assigned_day</code> of the pid called. To change someone's list, change the <em>schedule</em> tab; the dashboard reads it again within 5 minutes.</li>
+        <li>The list of a call is the <code>assigned_list</code> of the pid called. To change someone's list, change the <em>schedule</em> tab; the dashboard reads it again within 5 minutes.</li>
       </ul>
     </section>
 
     <section id="active">
       <h2>✅ Active pids — the work queues</h2>
-      <p>Every open pid sits in one queue. Work through them from the top. Each table starts with <code>assigned_day</code> (the day-4 or day-5 call list), then the pid. If the supervisor has left a note on a pid, it appears as <code>supervisor_note</code> right after the pid: read it before calling.</p>
+      <p>Every open pid sits in one queue. Work through them from the top. Each table starts with <code>assigned_list</code> (the day-4 or day-5 call list), then the pid. If the supervisor has left a note on a pid, it appears as <code>supervisor_note</code> right after the pid: read it before calling.</p>
 
       <div class="panel queue" style="--qc: var(--red)">
         <h3>🔁 To be revised — Data Team checked</h3>
@@ -300,14 +300,14 @@ footer { color: var(--muted); font-size: 13px; }
 
       <div class="panel queue" style="--qc: var(--green)">
         <h3>🆕 To be assigned</h3>
-        <p>Eligible sign-ups nobody has called yet. Hand them out <strong>strictly by <code>ordering</code></strong>: the top row is always the next pid to give out. Never skip ahead (a 5 before a 3), and never repeat a case while new ones are waiting. <code>days_waiting</code> counts the days since recruitment.</p>
+        <p>Eligible sign-ups nobody has called yet. Hand them out <strong>strictly by <code>call_order</code></strong>: the top row is always the next pid to give out. Never skip ahead (a 5 before a 3), and never repeat a case while new ones are waiting. <code>days_waiting</code> counts the days since recruitment.</p>
         <div class="flags"><div class="flag red"><b>1</b><span>skipped: should already have been tried</span></div></div>
         <ul>
-          <li><strong>Skipped (red rows):</strong> each call list (one recruitment day's day-4 or day-5 list) has a front, the highest <code>ordering</code> already tried. A pid more than 8 places behind it (one round of 8 enumerators) was passed over. Example: the team is on #20–28 and #8 has never been called. The <code>skipped</code> column says how far the list has got. Hand these out first.</li>
+          <li><strong>Skipped (red rows):</strong> each call list (one recruitment day's day-4 or day-5 list) has a front, the highest <code>call_order</code> already tried. A pid more than 8 places behind it (one round of 8 enumerators) was passed over. Example: the team is on #20–28 and #8 has never been called. The <code>skipped</code> column says how far the list has got. Hand these out first.</li>
         </ul>
         <h3>Assigning in the dashboard</h3>
         <ol class="steps">
-          <li>Tick the pids you are handing out, lowest <code>ordering</code> first.</li>
+          <li>Tick the pids you are handing out, lowest <code>call_order</code> first.</li>
           <li>Choose the enumerator for each in <em>assign to</em>.</li>
           <li>Choose your name in <em>Assigned by</em> (it goes into the log; the list is everyone marked <code>supervisor</code> = 1 on the <code>enumerators</code> tab), then click <strong>Assign</strong>.</li>
         </ol>
@@ -330,9 +330,9 @@ footer { color: var(--muted); font-size: 13px; }
       <div class="panel queue" style="--qc: var(--orange)">
         <h3>📵 To keep calling</h3>
         <div class="meta">Codes <code>2_IN</code> <code>2_NA</code> <code>2_OF</code> <code>2_WN</code></div>
-        <p>No answer or phone off, or a wrong number or wrong person with other numbers still to try. The list starts with the fewest attempts; within the same number of attempts, it follows the <strong>call-list order</strong> (<code>assigned_day</code>, then <code>ordering</code>). Take the top row.</p>
+        <p>No answer or phone off, or a wrong number or wrong person with other numbers still to try. The list starts with the fewest attempts; within the same number of attempts, it follows the <strong>call-list order</strong> (<code>assigned_list</code>, then <code>call_order</code>). Take the top row.</p>
         <div class="flags"><div class="flag orange"><b>12</b><span>1 attempt only</span></div></div>
-        <p>After <code>ordering</code> come the shift windows not tried yet (<code>shifts_to_try</code>) and whether the respondent ever picked up (<code>ever_picked_up</code>). Then the totals: all calls (<code>total_attempts</code>) and how many ended in no answer (<code>times_noanswer</code>), phone off (<code>times_off</code>), a reschedule (<code>times_rescheduled</code>) or a drop (<code>times_dropped</code>). Someone who has picked up before but keeps rescheduling needs a different approach from someone whose phone is always off.</p>
+        <p>After <code>call_order</code> come the shift windows not tried yet (<code>shifts_to_try</code>) and whether the respondent ever picked up (<code>ever_picked_up</code>). Then the totals: all calls (<code>total_attempts</code>) and how many ended in no answer (<code>times_noanswer</code>), phone off (<code>times_off</code>), a reschedule (<code>times_rescheduled</code>) or a drop (<code>times_dropped</code>). Someone who has picked up before but keeps rescheduling needs a different approach from someone whose phone is always off.</p>
         <p>The last three columns describe the last call: <code>last_callcode</code>, <code>last_enumerator</code> and <code>last_comment</code>.</p>
         <p><code>numbers_wrong</code> is the most numbers any single call found wrong. The form counts per call, not in total, so this never counts the same wrong number twice.</p>
       </div>

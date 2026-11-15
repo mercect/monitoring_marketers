@@ -37,7 +37,7 @@ import assign
 import attendance
 import column_help as ch
 import enumerators
-from calllist import assigned_day_number, first_call_date, lists_due, with_list_order
+from calllist import assigned_list_number, first_call_date, lists_due, with_list_order
 import review
 import review_tab
 
@@ -266,7 +266,7 @@ def todays_pace(subs, day):
 
 
 def list_progress(summary_view, subs, day):
-    """Progress per call list (assigned_day), newest list first, after an
+    """Progress per call list (assigned_list), newest list first, after an
     "All lists" row: pids in the sample, and the share attempted, reached
     (picked up at least once) and completed, overall and on `day`."""
     t = _to_dt(subs["endtime"] if "endtime" in subs.columns else pd.Series("", index=subs.index))
@@ -279,7 +279,7 @@ def list_progress(summary_view, subs, day):
              "completed": set(calls.loc[calls["callcode"].astype(str).str.strip().eq("1"), "pid"])
              if len(calls) and "callcode" in calls.columns else set()}
     overall = {"attempted": "ever_attempted", "reached": "ever_picked_up", "completed": "is_complete"}
-    lists = summary_view["assigned_day"].fillna("").astype(str).str.strip()         if "assigned_day" in summary_view.columns else pd.Series("", index=summary_view.index)
+    lists = summary_view["assigned_list"].fillna("").astype(str).str.strip()         if "assigned_list" in summary_view.columns else pd.Series("", index=summary_view.index)
     groups = [("All lists", summary_view)]
     for name in sorted({v for v in lists if v}, key=_list_key, reverse=True):
         groups.append((name, summary_view[lists == name]))
@@ -337,10 +337,10 @@ def skipped_in_order(roster, window=ASSIGN_WINDOW, handed=()):
     """pid -> the front of its call list, for never-called pids left behind.
 
     A call list is one recruitment day's day-4 or day-5 list. Its FRONT is the
-    highest `ordering` already tried (any submission at all). A never-called
-    pid whose ordering is more than `window` places behind that front should
+    highest `call_order` already tried (any submission at all). A never-called
+    pid whose call_order is more than `window` places behind that front should
     already have been handed out: with 8 enumerators trying #20-28, #8 is
-    skipped. Pids without an ordering are never flagged."""
+    skipped. Pids without a call_order are never flagged."""
     if roster.empty:
         return pd.Series(dtype=float)
     d = with_list_order(roster)
@@ -461,7 +461,7 @@ def open_with_buckets(cases, summary):
                     "times_rescheduled", "times_dropped",
                     "times_noanswer", "times_off",
                     "last_section", "tab_id", "last_comment", "last_submission_time",
-                    "assigned_day", "ordering", "date_recruited"]
+                    "assigned_list", "call_order", "date_recruited"]
                    if c in summary.columns]]
     oc = oc.merge(eff, on="pid", how="left")
     oc["shifts_tried"] = (oc["shifts_covered_n"].fillna(0).astype(int).astype(str) + "/5")
@@ -542,7 +542,7 @@ if _sample_tab != EXPECTED_SAMPLE_TAB:
     )
     st.caption(
         "**Fix:** open this app's ⚙ **Settings → Secrets** and set "
-        "`sample_csv_url` to the link ending in `gid=517204918`. The app "
+        "`sample_csv_url` to the link ending in `gid=342765187`. The app "
         "restarts on its own. Locally the same line lives in "
         "`dashboard/.streamlit/secrets.toml`."
     )
@@ -596,20 +596,20 @@ if right.button("🔄 Refresh now"):
 #  very bottom of the page — see "What this page is built from")
 
 # --- Filter: one row across the top of the page, always visible -------------
-# Priority list (assigned_day, e.g. "12Nov-D4"), keyed by pid, so it narrows
+# Priority list (assigned_list, e.g. "12Nov-D4"), keyed by pid, so it narrows
 # `cases` and the summary through the pid list. Empty = all lists.
 #   Supervisor review, To be revised and Attendance ignore it on purpose.
 route_col = route_column(summary)          # still shown as a column in tables
 
-_aday = (summary["assigned_day"].fillna("").astype(str).str.strip()
-         if "assigned_day" in summary.columns else pd.Series("", index=summary.index))
+_aday = (summary["assigned_list"].fillna("").astype(str).str.strip()
+         if "assigned_list" in summary.columns else pd.Series("", index=summary.index))
 
 
 def _list_key(v):
     """Order the lists by date, then day number: '03Nov-D4' < '03Nov-D5' < '12Nov-D4'.
     Plain values without a date ('4', '5') come first."""
     d = pd.to_datetime(v.split("-")[0], format="%d%b", errors="coerce")
-    n = pd.to_numeric(assigned_day_number(pd.Series([v])), errors="coerce").iloc[0]
+    n = pd.to_numeric(assigned_list_number(pd.Series([v])), errors="coerce").iloc[0]
     return (pd.notna(d), d.dayofyear if pd.notna(d) else 0, n if pd.notna(n) else 0, v)
 
 
@@ -624,7 +624,7 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 _filter_box = st.container(key="filter_bar")
 with _filter_box:
-    picked_lists = st.multiselect("🔎 Filter · Priority list (assigned_day)", list_options,
+    picked_lists = st.multiselect("🔎 Filter · Priority list (assigned_list)", list_options,
                                   key="flt_lists", placeholder="All lists",
                                   help="Pick one or more call lists, e.g. 12Nov-D4. "
                                        "Leave empty for all.")
@@ -698,9 +698,9 @@ with tab_summary:
     _due_tiles = []
     for _r in _due.itertuples():
         if _r.due == _clock_day:
-            _due_tiles.append((int(_r.left), f"left on {_r.assigned_day}", BLUE, "first call today"))
+            _due_tiles.append((int(_r.left), f"left on {_r.assigned_list}", BLUE, "first call today"))
         else:
-            _due_tiles.append((int(_r.left), f"left on {_r.assigned_day}", RED,
+            _due_tiles.append((int(_r.left), f"left on {_r.assigned_list}", RED,
                                f"due {_r.due:%a %d %b}, overdue"))
     if not any(_r.due == _clock_day for _r in _due.itertuples()):
         _due_tiles.insert(0, (0, "no list due today", BLUE))
@@ -808,7 +808,7 @@ with tab_summary:
     for _p in _prog.itertuples():
         _first = ""
         if _p.list != "All lists":
-            _fc = first_call_date(summary_view[summary_view["assigned_day"].astype(str).str.strip()
+            _fc = first_call_date(summary_view[summary_view["assigned_list"].astype(str).str.strip()
                                                == _p.list].head(1))
             _first = f"first call {_fc.iloc[0]:%a %d %b}" if len(_fc) and pd.notna(_fc.iloc[0]) else ""
         def _share(k, w):
@@ -859,7 +859,7 @@ with tab_action:
         if _react.empty:
             st.caption("Nothing here right now.")
         else:
-            _rv = _react.merge(_open_all[[c for c in ["pid", "assigned_day", "shifts_to_try",
+            _rv = _react.merge(_open_all[[c for c in ["pid", "assigned_list", "shifts_to_try",
                                                       "total_attempts"]
                                           if c in _open_all.columns]], on="pid", how="left")
             # The last REAL call (who, and its code): the latest row is the
@@ -917,7 +917,7 @@ with tab_action:
             # whether they ever picked up, then the effort as TOTALS, then the
             # last call: its code, who made it, and the comment.
             # callcode / enumerator are shown as last_callcode / last_enumerator.
-            "Keep calling": ["pid", "ordering", "shifts_to_try",
+            "Keep calling": ["pid", "call_order", "shifts_to_try",
                              "ever_picked_up", "total_attempts", "times_noanswer",
                              "times_off", "times_rescheduled", "times_dropped",
                              "numbers_wrong", "last_submission_time",
@@ -971,7 +971,7 @@ with tab_action:
             elif key == "Keep calling":
                 # The next-attempt pile: fewest attempts first, and within the same
                 # number of attempts, CALL-LIST ORDER (recruitment day, assigned
-                # day, then `ordering`). Without an ordering yet, fewest shift windows tried
+                # day, then `call_order`). Without a call_order yet, fewest shift windows tried
                 # and the longest left come next, as before.
                 rows = with_list_order(rows)
                 rows["_last"] = pd.to_datetime(rows.get("last_submission_time"),
@@ -984,10 +984,10 @@ with tab_action:
             # The supervisor's note (Supervisor review: keep trying / sent back)
             # sits right after the pid, so the enumerator reads it before
             # dialling. Only shown when some pid in this queue has one.
-            # assigned_day (which call list: day 4 or 5) always leads, in front
+            # assigned_list (which call list: day 4 or 5) always leads, in front
             # of the pid, in every queue.
-            _cols = ([c for c in ["assigned_day"] if c in rows.columns]
-                     + [c for c in COLS[key] if c in rows.columns and c != "assigned_day"])
+            _cols = ([c for c in ["assigned_list"] if c in rows.columns]
+                     + [c for c in COLS[key] if c in rows.columns and c != "assigned_list"])
             if "supervisor_note" in rows.columns and rows["supervisor_note"].ne("").any():
                 _cols.insert(_cols.index("pid") + 1, "supervisor_note")
             # Which rows to paint red, read BEFORE trimming the columns: the
@@ -1024,7 +1024,7 @@ with tab_action:
             if wa.empty:
                 st.caption("Nothing here right now.")
             else:
-                wa_cols = ["assigned_day", "pid", "enumerator", "status", "callcode", "action_bucket",
+                wa_cols = ["assigned_list", "pid", "enumerator", "status", "callcode", "action_bucket",
                            "total_attempts", "shifts_to_try", "numbers_tried_of_available",
                            "last_comment"]
                 ch.dataframe(yesno(wa[[c for c in wa_cols if c in wa.columns]]),
@@ -1052,7 +1052,7 @@ with tab_action:
     if new_cases.empty:
         st.caption("Nothing to assign.")
     else:
-        # CALL-LIST ORDER: first attempts go strictly by `ordering`, so the top
+        # CALL-LIST ORDER: first attempts go strictly by `call_order`, so the top
         # row is always the next pid to hand out (blank orderings last).
         new_cases["days_waiting"] = days_waiting(new_cases, data_now(summary))
         new_cases = (with_list_order(new_cases)
@@ -1061,7 +1061,7 @@ with tab_action:
         new_cases["skipped"] = [f"⚠ list is at #{int(_front[p])}" if p in _front.index else ""
                                 for p in new_cases["pid"]]
         _red_skip = new_cases["skipped"].ne("")
-        newcols = [c for c in ["assigned_day", "pid", "ordering", "skipped", "days_waiting",
+        newcols = [c for c in ["assigned_list", "pid", "call_order", "skipped", "days_waiting",
                                "phone_sample_status", "own_phone", "phones_provided",
                                "rec_signup"]
                    if c in new_cases.columns]
@@ -1081,12 +1081,12 @@ with tab_action:
     else:
         _late = _wait["minutes"] > assign.LATE_MINUTES
         flag_tiles([(int(_late.sum()), f"not called within {assign.LATE_MINUTES} min", RED)])
-        _w = _wait.merge(summary[[c for c in ["pid", "assigned_day", "ordering"]
+        _w = _wait.merge(summary[[c for c in ["pid", "assigned_list", "call_order"]
                                   if c in summary.columns]], on="pid", how="left")
         _w["assigned_at"] = pd.to_datetime(_w["assigned_at"]).dt.strftime("%d %b %H:%M")
         _w["minutes_waiting"] = _w["minutes"].astype("Int64")
         _w = _w.sort_values("minutes_waiting", ascending=False)
-        _wcols = [c for c in ["assigned_day", "pid", "ordering", "assigned_to",
+        _wcols = [c for c in ["assigned_list", "pid", "call_order", "assigned_to",
                               "assigned_at", "minutes_waiting", "assigned_by", "reason"]
                   if c in _w.columns]
         ch.dataframe(style_rows(_w[_wcols], red=_w["minutes_waiting"] > assign.LATE_MINUTES),
@@ -1125,8 +1125,8 @@ with tab_attend:
     _day = st.selectbox("Day", _days, index=_days.index(_past[-1] if _past else _days[0]),
                         format_func=lambda d: f"{d:%a %d %b}" + (" (today)" if d == _today else ""),
                         key="att_day")
-    _pid_list = (summary.drop_duplicates("pid").set_index("pid")["assigned_day"]
-                 if "assigned_day" in summary.columns else pd.Series(dtype=str))
+    _pid_list = (summary.drop_duplicates("pid").set_index("pid")["assigned_list"]
+                 if "assigned_list" in summary.columns else pd.Series(dtype=str))
     _calls = attendance.calls_of_day(subs, _day, _pid_list)
     _rows = attendance.day_table(_day, _sch, _chk, _calls,
                                  known=set(name_map.values()) if name_map else None)
@@ -1317,7 +1317,7 @@ with tab_archive:
             if _code == "0_R":
                 # Refusal: why they refused, the consent answer (c01) and the
                 # effort it took before they said no
-                _ref_cols = ["pid", "assigned_day", "enumerator", "last_submission_time",
+                _ref_cols = ["pid", "assigned_list", "enumerator", "last_submission_time",
                              "notification_form", "refuse_why", "c01", "total_attempts",
                              "numbers_wrong", "times_rescheduled", "times_dropped",
                              "times_noanswer", "times_off", "last_comment"]
@@ -1345,7 +1345,7 @@ with tab_archive:
                 ch.dataframe(yesno(_g[acols]), width="stretch", hide_index=True)
                 continue
             # ✅ Completed: the interview and its quality, one row per pid
-            _done_cols = ["pid", "assigned_day", "enumerator", "last_submission_time",
+            _done_cols = ["pid", "assigned_list", "enumerator", "last_submission_time",
                           "was_partialsaved", "total_attempts", "numbers_wrong",
                           "times_rescheduled", "times_dropped", "times_noanswer", "times_off",
                           "topup_amount", "topup_mobile_lab", "last_comment"] + QC_FIELDS + END_FIELDS
@@ -1363,7 +1363,7 @@ with tab_archive:
                        "ended as a partial (partial_end_survey = 1). last_section = how far the "
                        "interview got.")
             if len(_ps):
-                _ps_cols = ["pid", "assigned_day", "enumerator", "last_submission_time",
+                _ps_cols = ["pid", "assigned_list", "enumerator", "last_submission_time",
                             "current_status", "current_callcode", "last_section_n", "last_section",
                             "stop_reason", "topup_amount", "topup_mobile_lab"] + QC_FIELDS + END_FIELDS
                 _p = _ps.drop(columns=[c for c in ("stop_reason",) if c in _ps.columns])                         .merge(_answers, on="pid", how="left")

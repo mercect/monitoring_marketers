@@ -10,8 +10,8 @@ import streamlit as st
 HELP = {
     # who / which list
     "pid": "The respondent's ID.",
-    "assigned_day": "Which call list the pid is on: the day-4 or day-5 list of its recruitment day.",
-    "ordering": "The pid's position in its call list. First calls go strictly in this order.",
+    "assigned_list": "Which call list the pid is on: the day-4 or day-5 list of its recruitment day.",
+    "call_order": "The pid's position in its call list. First calls go strictly in this order.",
     "route_recruited": "Route where the respondent was recruited.",
     "date_recruited": "Day the respondent was recruited.",
     "phone_sample_status": "Sign-up status at recruitment (only 'Eligible - signed up' can be called).",
@@ -83,9 +83,9 @@ HELP = {
     "on_list": "Calls on pids of their planned list.",
     "other_list": "Calls on pids of another list (all calls, if not on the schedule).",
     "other_lists": "Which other lists, and how many calls on each.",
-    "pid_list": "The list (assigned_day) of the pid called.",
+    "pid_list": "The list (assigned_list) of the pid called.",
     "time": "Time of the call.",
-    "list": "Call list (assigned_day), e.g. 12Nov-D4.",
+    "list": "Call list (assigned_list), e.g. 12Nov-D4.",
     "people": "Who is planned: ✅ checked in · ⏳ not checked in · 🟠 calling another list.",
     # completed / partially completed
     "topup_amount": "Top-up sent (topup_rate; for a partial save, the resume top-up if that is the only one).",

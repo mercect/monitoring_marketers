@@ -199,7 +199,7 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
         <div class="change"><h3>First calls are assigned in the dashboard</h3><p>New pids are handed out from 🆕 To be assigned, strictly in list order. Every assignment is logged, and calls are checked against it.</p></div>
         <div class="change"><h3>New Attendance tab</h3><p>Who was planned, who checked in, and which list each person actually called.</p></div>
         <div class="change"><h3>A new first page</h3><p>🧾 Calls summary now reads Do now → To fix → Progress, one line per call list.</p></div>
-        <div class="change"><h3>Filter by call list</h3><p>The filter at the top picks call lists by <code>assigned_day</code> (e.g. <code>12Nov-D4</code>). The route filter, the Tracking sheet and the By enumerator tab are gone.</p></div>
+        <div class="change"><h3>Filter by call list</h3><p>The filter at the top picks call lists by <code>assigned_list</code> (e.g. <code>12Nov-D4</code>). The route filter, the Tracking sheet and the By enumerator tab are gone.</p></div>
       </div>
     </section>
 
@@ -330,7 +330,7 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
       </div>
       <div class="sub-block">
         <dl class="rows">
-          <dt>Priority list</dt><dd>Pick one or more call lists by <code>assigned_day</code>, e.g. <code>12Nov-D4</code>. Leave it empty to see every list. Supervisor review, To be revised and Attendance always show everything.</dd>
+          <dt>Priority list</dt><dd>Pick one or more call lists by <code>assigned_list</code>, e.g. <code>12Nov-D4</code>. Leave it empty to see every list. Supervisor review, To be revised and Attendance always show everything.</dd>
           <dt>Refresh now</dt><dd>Re-reads the data straight away. Otherwise it refreshes by itself every 5 minutes.</dd>
           <dt>Column help</dt><dd>Hover over any column heading (tap it on a tablet) to see what it means.</dd>
         </dl>
@@ -434,7 +434,7 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
     <section class="part" id="active">
       <div class="part-head">
         <h2>✅ Active pids: the work queues <span class="pill changed">Changed</span></h2>
-        <p>Every open pid sits in exactly one queue. Work through them from the top of the page down. Each table starts with <code>assigned_day</code> and the pid. If the Data Team left a note, it shows as <code>supervisor_note</code> right after the pid.</p>
+        <p>Every open pid sits in exactly one queue. Work through them from the top of the page down. Each table starts with <code>assigned_list</code> and the pid. If the Data Team left a note, it shows as <code>supervisor_note</code> right after the pid.</p>
       </div>
 
       <div class="sub-block" id="revised">
@@ -464,7 +464,7 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
           <div class="example-label">Example · made-up pids</div>
           <div class="flags"><span class="flag red"><b>1</b>overdue</span><span class="flag orange"><b>1</b>due in the next hour</span></div>
           <div class="tbl"><table>
-            <tr><th>assigned_day</th><th>pid</th><th>callcode</th><th>callback_due</th><th>callback_by</th><th>comments</th></tr>
+            <tr><th>assigned_list</th><th>pid</th><th>callcode</th><th>callback_due</th><th>callback_by</th><th>comments</th></tr>
             <tr class="red"><td class="mono">12Nov-D4</td><td class="mono">ZZ11002C3</td><td class="mono">2_SC</td><td>2026-11-16 09:00</td><td>enumerator</td><td>At work, call in the morning</td></tr>
             <tr><td class="mono">12Nov-D5</td><td class="mono">ZZ11450A1</td><td class="mono">3_SC</td><td>2026-11-16 13:30</td><td>respondent</td><td>Will call back after lunch</td></tr>
           </table></div>
@@ -483,7 +483,7 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
           <div class="example-label">Example · made-up pids</div>
           <div class="flags"><span class="flag blue"><b>2</b>held on a tablet now</span><span class="flag red"><b>1</b>no tablet id</span></div>
           <div class="tbl"><table>
-            <tr><th>assigned_day</th><th>pid</th><th>callcode</th><th>active_partialsave</th><th>tab_id</th><th>last_section</th></tr>
+            <tr><th>assigned_list</th><th>pid</th><th>callcode</th><th>active_partialsave</th><th>tab_id</th><th>last_section</th></tr>
             <tr><td class="mono">11Nov-D4</td><td class="mono">ZZ09811B1</td><td class="mono">4_D</td><td>Yes</td><td class="mono">T03</td><td>Section C</td></tr>
             <tr><td class="mono">11Nov-D5</td><td class="mono">ZZ09977A2</td><td class="mono">4_SC</td><td>Yes</td><td>—</td><td>Section B</td></tr>
           </table></div>
@@ -493,11 +493,11 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
       <div class="sub-block" id="assign">
         <h3>🆕 To be assigned <span class="pill new">New way of assigning</span></h3>
         <dl class="rows">
-          <dt>Shows</dt><dd>Eligible sign-ups nobody has called yet, sorted by <code>ordering</code>. The top row is always the next pid to give out.</dd>
+          <dt>Shows</dt><dd>Eligible sign-ups nobody has called yet, sorted by <code>call_order</code>. The top row is always the next pid to give out.</dd>
           <dt>Red rows</dt><dd><b>Skipped:</b> more than 8 places behind the furthest pid already tried on that list. Hand these out first.</dd>
           <dt>You do</dt><dd>
             <ul>
-              <li>Tick the pids you are handing out, lowest <code>ordering</code> first.</li>
+              <li>Tick the pids you are handing out, lowest <code>call_order</code> first.</li>
               <li>Choose the enumerator for each in <code>assign to</code>.</li>
               <li>Choose your name in <b>Assigned by</b> and click <b>Assign</b>.</li>
             </ul>
@@ -508,7 +508,7 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
         <div class="example">
           <div class="example-label">Example · made-up pids</div>
           <div class="tbl"><table>
-            <tr><th>✔</th><th>assigned_day</th><th>pid</th><th>ordering</th><th>days_waiting</th><th>assign to</th></tr>
+            <tr><th>✔</th><th>assigned_list</th><th>pid</th><th>call_order</th><th>days_waiting</th><th>assign to</th></tr>
             <tr class="red"><td>☑</td><td class="mono">12Nov-D4</td><td class="mono">ZZ12008A1</td><td>8</td><td>4</td><td>Enumerator A</td></tr>
             <tr><td>☑</td><td class="mono">12Nov-D4</td><td class="mono">ZZ12031B2</td><td>29</td><td>4</td><td>Enumerator B</td></tr>
             <tr><td>☐</td><td class="mono">12Nov-D4</td><td class="mono">ZZ12035C1</td><td>30</td><td>4</td><td></td></tr>
@@ -561,7 +561,7 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
         <div class="example">
           <div class="example-label">Example · made-up pids</div>
           <div class="tbl"><table>
-            <tr><th>assigned_day</th><th>pid</th><th>ordering</th><th>shifts_to_try</th><th>total_attempts</th><th>last_callcode</th></tr>
+            <tr><th>assigned_list</th><th>pid</th><th>call_order</th><th>shifts_to_try</th><th>total_attempts</th><th>last_callcode</th></tr>
             <tr><td class="mono">12Nov-D4</td><td class="mono">ZZ12004A2</td><td>4</td><td>B, C, D, E</td><td>1</td><td class="mono">2_NA</td></tr>
             <tr><td class="mono">12Nov-D4</td><td class="mono">ZZ12011C1</td><td>11</td><td>A, C, E</td><td>2</td><td class="mono">2_OF</td></tr>
           </table></div>

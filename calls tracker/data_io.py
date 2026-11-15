@@ -27,9 +27,13 @@ REFRESH_SECONDS = 300
 EXPECTED_SAMPLE_TAB = "data_entry"
 
 TAB_NAMES = {
-    # current round (new spreadsheet, October 2026)
-    "1615108913": "phone_survey",
-    "970246647": "data_entry",
+    # current round: Launch 0 (phone_survey_launch0_nov2026, November 2026)
+    "948483771": "phone_survey",
+    "342765187": "data_entry",
+    # training round (October 2026 spreadsheet) - labelled as old so a stale
+    # secrets link trips the wrong-roster banner instead of passing silently
+    "1615108913": "phone_survey (training round)",
+    "970246647": "data_entry (training round)",
     # pilot round (August 2026 spreadsheet) - labelled as old so a stale
     # secrets link trips the wrong-roster banner instead of passing silently
     "249772860": "phone_survey (pilot round)",
@@ -108,6 +112,18 @@ def _secret(key, default=""):
         return default
 
 
+
+# The data_entry tab renamed its call-list columns: assigned_day is now
+# assigned_list and ordering is now call_order. A sheet still using the old
+# names is read under the new ones, so the dashboard works with either.
+LIST_COLUMN_RENAMES = {"assigned_day": "assigned_list", "ordering": "call_order"}
+
+
+def rename_list_columns(df):
+    ren = {old: new for old, new in LIST_COLUMN_RENAMES.items()
+           if old in df.columns and new not in df.columns}
+    return df.rename(columns=ren) if ren else df
+
 @st.cache_data(ttl=REFRESH_SECONDS)
 def load_submissions():
     """Read the raw submission export (Kobo) from the sheet link, or the sample."""
@@ -134,6 +150,7 @@ def load_sample(_subs):
     if url:
         tab, gid = _tab_of(raw)
         df = _read_sheet(url, "sample_csv_url", tab, gid)
+        df = rename_list_columns(df)
         return df, {"origin": "Google Sheet", "tab": tab, "gid": gid,
                     "rows": len(df), "dropped_test": 0,
                     "read": f"{datetime.now():%H:%M:%S}"}

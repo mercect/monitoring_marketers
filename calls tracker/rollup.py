@@ -603,6 +603,13 @@ def rollup(submissions: pd.DataFrame, now=None) -> pd.DataFrame:
             "treatment": latest.get("treatment", ""),
         })
 
+    if not rows:
+        # No submissions yet (a new round's sheet has only its header row):
+        # return no cases but with every column, so the dashboard can show
+        # empty tables instead of failing on a frame that has no columns.
+        blank = {c: "" for c in submissions.columns}
+        blank["pid"] = "__none__"
+        return rollup(pd.DataFrame([blank]), now=now).iloc[0:0]
     cases = pd.DataFrame(rows)
     return cases
 
