@@ -107,6 +107,7 @@ HELP = {
     "ineligible_type1": "Ineligible: under 18, outside the Western Area, or no phone at recruitment.",
     "attrition_reason": "Reason the case was lost, when recorded.",
     "refuse_why": "Reason given for refusing.",
+    "c01": "Consent question (c01) answer on the form.",
     "is_incorrect": "Wrong person reached.",
     "is_othercontact": "Reached someone else who knows the respondent.",
     "calls_after_close": "Calls logged after a supervisor closed the pid.",

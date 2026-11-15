@@ -1297,7 +1297,7 @@ with tab_archive:
                           ("0_D", "Keeps dropping — supervisor (0_D)"),
                           ("0_SC", "Keeps rescheduling — supervisor (0_SC)")]
         _known = {c for c, _ in INACTIVE_TYPES}
-        _answers = latest_answers(subs, QC_FIELDS + END_FIELDS + ["topup_mobile_lab", "stop_reason"])
+        _answers = latest_answers(subs, QC_FIELDS + END_FIELDS + ["topup_mobile_lab", "stop_reason", "c01"])
         _groups = INACTIVE_TYPES + [("_other", "Other closure")]
         for _code, _label in _groups:
             _mask = (~_kind.isin(_known)) if _code == "_other" else _kind.eq(_code)
@@ -1305,6 +1305,19 @@ with tab_archive:
             if _g.empty:
                 continue
             st.markdown(f"#### {_label} ({len(_g)})")
+            if _code == "0_R":
+                # Refusal: why they refused, the consent answer (c01) and the
+                # effort it took before they said no
+                _ref_cols = ["pid", "assigned_day", "enumerator", "last_submission_time",
+                             "refuse_why", "c01", "total_attempts", "numbers_wrong",
+                             "times_rescheduled", "times_dropped", "times_noanswer", "times_off",
+                             "last_comment"]
+                _r = (_g[["pid"]]
+                      .merge(summary.drop_duplicates("pid"), on="pid", how="left", suffixes=("", "_s"))
+                      .merge(_answers[["pid", "c01"]], on="pid", how="left"))
+                ch.dataframe(yesno(_r[[c for c in _ref_cols if c in _r.columns]]),
+                             width="stretch", hide_index=True)
+                continue
             if _code != "1":
                 ch.dataframe(yesno(_g[acols]), width="stretch", hide_index=True)
                 continue
