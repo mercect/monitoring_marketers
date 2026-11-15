@@ -1318,12 +1318,26 @@ with tab_archive:
                 # Refusal: why they refused, the consent answer (c01) and the
                 # effort it took before they said no
                 _ref_cols = ["pid", "assigned_day", "enumerator", "last_submission_time",
-                             "refuse_why", "c01", "total_attempts", "numbers_wrong",
-                             "times_rescheduled", "times_dropped", "times_noanswer", "times_off",
-                             "last_comment"]
+                             "notification_form", "refuse_why", "c01", "total_attempts",
+                             "numbers_wrong", "times_rescheduled", "times_dropped",
+                             "times_noanswer", "times_off", "last_comment"]
                 _r = (_g[["pid"]]
                       .merge(summary.drop_duplicates("pid"), on="pid", how="left", suffixes=("", "_s"))
                       .merge(_answers[["pid", "c01"]], on="pid", how="left"))
+                # The refusal itself: the latest 0_R submission. On the
+                # notification (Communications) form the reason is
+                # rs_refuse_why; on the Long Survey it is refuse_why.
+                _rs = subs[subs["callcode"].astype(str).str.strip().eq("0_R")].copy()
+                _rs["_t"] = _to_dt(_rs["endtime"]) if "endtime" in _rs.columns else pd.NaT
+                _rs = _rs.sort_values("_t").drop_duplicates("pid", keep="last").set_index("pid")
+                _notif = (_rs["survey_type"].astype(str).str.strip().eq("Communications form")
+                          if "survey_type" in _rs.columns else pd.Series(False, index=_rs.index))
+                _why_ls = _rs.get("refuse_why", pd.Series("", index=_rs.index)).fillna("").astype(str)
+                _why_rs = _rs.get("rs_refuse_why", pd.Series("", index=_rs.index)).fillna("").astype(str)
+                _why = _why_rs.where(_notif & _why_rs.str.strip().ne(""), _why_ls)
+                _r["notification_form"] = _r["pid"].map(_notif).map({True: "Yes", False: "No"}).fillna("")
+                _r["refuse_why"] = _r["pid"].map(_why).where(_r["pid"].isin(_rs.index),
+                                                             _r.get("refuse_why", ""))
                 ch.dataframe(yesno(_r[[c for c in _ref_cols if c in _r.columns]]),
                              width="stretch", hide_index=True)
                 continue
