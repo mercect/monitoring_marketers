@@ -250,9 +250,11 @@ def _validate(todo, summary, subs, can_save):
 
     cols = [c for c in LIST_COLS if c in view.columns and (c != "flag" or n_flag)]
     table = view[cols].reset_index(drop=True)
-    st.caption("Click a row to review that pid below.")
-    sel = ch.dataframe(table, hide_index=True, width="stretch", on_select="rerun",
-                       selection_mode="single-row", key=f"review_list_{pick}")
+    # Folded by default: the list is long and pushes "Review one pid" down.
+    with st.expander(f"📋 Show the list ({len(table)})"):
+        st.caption("Click a row to review that pid below.")
+        sel = ch.dataframe(table, hide_index=True, width="stretch", on_select="rerun",
+                           selection_mode="single-row", key=f"review_list_{pick}")
     rows = sel.selection.rows if sel is not None else []
     clicked = table.at[rows[0], "pid"] if rows else None
 
