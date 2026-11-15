@@ -105,7 +105,9 @@ ol.flow li { counter-increment: step; display: grid; grid-template-columns: 36px
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
 ol.flow li::before { content: counter(step); font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; color: var(--accent);
   background: var(--accent-soft); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; }
+ol.flow.from-zero { counter-reset: step -1; }
 ol.flow strong { display: block; }
+.alert { background: var(--red-soft); color: var(--red); border-radius: 6px; padding: 8px 12px; font-size: 0.93rem; font-weight: 500; }
 ol.flow span { color: var(--muted); font-size: 0.94rem; }
 
 /* one dashboard subsection */
@@ -163,6 +165,7 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
 <div class="wrap">
   <aside class="rail" aria-label="Contents">
     <nav>
+      <a href="#arrive">When you arrive</a>
       <a href="#changes">What's changed</a>
       <a href="#roles">Who does what</a>
       <a href="#day">The day, in order</a>
@@ -187,6 +190,45 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
   </aside>
 
   <main>
+    <!-- ================================================================= -->
+    <section class="part" id="arrive">
+      <div class="part-head">
+        <h2>When you arrive at the office</h2>
+        <p>Before anyone makes a call, in this order. Be ready to hand out materials and check attendance as the enumerators come in.</p>
+      </div>
+      <ol class="flow from-zero">
+        <li><div>
+          <strong>Organize the tracking sheets</strong>
+          <span>The tracking sheets you received belong to two lists: <b>12Nov-D4</b> and <b>12Nov-D5</b>. Each sheet says which list it is on.</span>
+        </div></li>
+        <li><div>
+          <strong>Check attendance: Start of the Day form</strong>
+          <span>Each enumerator sends the Start of the Day form <b>next to you, one by one</b>. Nobody starts calling without doing this. The check-ins then show in 🗓️ Attendance.</span>
+        </div></li>
+        <li><div>
+          <strong>Assign one tracking sheet and one case, in order</strong>
+          <span>Give each enumerator the next tracking sheet in order, and record the same pid in 🆕 To be assigned in the dashboard. The order is set in the dashboard (<code>ordering</code>) and is also printed on the tracking sheet, so the two should always match. One case at a time.</span>
+        </div></li>
+      </ol>
+      <div class="sub-block">
+        <h3>Monday 16 Nov: only the D4 list</h3>
+        <div class="alert">On Monday we work ONLY the 12Nov-D4 list. Keep every 12Nov-D5 sheet to one side.</div>
+        <dl class="rows">
+          <dt>D4 sheets</dt><dd>Put them in order, using the order number on each tracking sheet. This is the pile you assign from.</dd>
+          <dt>D5 sheets</dt><dd>Set them aside, also in order, ready for the day they are due. Nobody calls them on Monday.</dd>
+          <dt>Dashboard</dt><dd>Pick <code>12Nov-D4</code> in the <b>Priority list</b> filter at the top, so the queues show only that list.</dd>
+        </dl>
+        <div class="example">
+          <div class="example-label">Example · what each sheet tells you</div>
+          <div class="tbl"><table>
+            <tr><th>list on the sheet</th><th>order</th><th>on Monday</th></tr>
+            <tr><td class="mono">12Nov-D4</td><td>1, 2, 3 …</td><td>Assign, in this order</td></tr>
+            <tr><td class="mono">12Nov-D5</td><td>1, 2, 3 …</td><td>Keep aside, in order</td></tr>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ================================================================= -->
     <section class="part" id="changes">
       <div class="part-head">
@@ -249,7 +291,7 @@ footer { max-width: 1120px; margin: 48px auto 0; color: var(--muted); font-size:
         <p>The order to open things in. It follows the dashboard from top to bottom.</p>
       </div>
       <ol class="flow">
-        <li><div><strong>🗓️ Attendance</strong><span>Is everyone who was planned checked in, on the right list?</span></div></li>
+        <li><div><strong>🗓️ Attendance</strong><span>Everyone has sent the Start of the Day form next to you. Is everyone who was planned checked in, on the right list?</span></div></li>
         <li><div><strong>🧾 Calls summary → ⚠️ To fix</strong><span>Anything sent back by the Data Team, or calls that should not have happened.</span></div></li>
         <li><div><strong>✅ Active pids → 🔁 To be revised</strong><span>Cases the Data Team sent back. Called first, note read.</span></div></li>
         <li><div><strong>⏰ To be followed up</strong><span>Callbacks, overdue (red) first.</span></div></li>
