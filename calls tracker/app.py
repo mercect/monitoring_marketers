@@ -640,7 +640,13 @@ with tab_summary:
     st.caption("Top to bottom = priority. The lists are in ✅ Active pids.")
 
     # ---- 2. FIX: calls that should not have happened (only when they did) -----
-    _fix = [(len(_rc), "called again after completing", RED, "table below"),
+    # cases the Data Team sent back (Supervisor review: ACTIVE / reopened) that
+    # nobody has called since: same rule as 🔁 To be revised, whole roster
+    _sent_back = review.reactivated(decisions, subs, assign.utc_now())
+    _sent_back = _sent_back[_sent_back["pid"].isin(open_with_buckets(cases_roster, summary)["pid"])]
+    _fix = [(len(_sent_back), "sent back by the Data Team to revise", RED,
+             "call first · 🔁 To be revised"),
+            (len(_rc), "called again after completing", RED, "table below"),
             (len(_ac), "called after a supervisor closed them", RED, "table below"),
             (len(_asg_checks["unassigned"]), "called without being assigned", ORANGE,
              "table below"),
