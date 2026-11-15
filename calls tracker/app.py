@@ -582,10 +582,19 @@ def _list_key(v):
 
 list_options = sorted({v for v in _aday if v}, key=_list_key)
 
-picked_lists = st.multiselect("Priority list (assigned_day)", list_options,
-                              key="flt_lists", placeholder="All lists",
-                              help="Pick one or more call lists, e.g. 12Nov-D4. "
-                                   "Leave empty for all.")
+# A tinted box so the filter reads as a control, apart from the content. The
+# container's key becomes the CSS class st-key-filter_bar; the fill is
+# translucent so it works in the light and the dark theme.
+st.markdown("""<style>
+.st-key-filter_bar {background: rgba(28,126,214,.11); border: 1px solid rgba(28,126,214,.40);
+  border-radius: 10px; padding: 10px 16px 4px;}
+</style>""", unsafe_allow_html=True)
+_filter_box = st.container(key="filter_bar")
+with _filter_box:
+    picked_lists = st.multiselect("🔎 Filter · Priority list (assigned_day)", list_options,
+                                  key="flt_lists", placeholder="All lists",
+                                  help="Pick one or more call lists, e.g. 12Nov-D4. "
+                                       "Leave empty for all.")
 base_pids = set(summary.loc[_aday.isin(picked_lists).values, "pid"]) if picked_lists else None
 keep_pids = base_pids
 
@@ -594,7 +603,7 @@ summary_base = summary if base_pids is None else summary[summary["pid"].isin(bas
 if keep_pids is not None:
     cases = cases[cases["pid"].isin(keep_pids)]
     summary_view = summary_view[summary_view["pid"].isin(keep_pids)]
-st.caption(f"Showing **{len(summary_view)}** of {len(summary)} pids.")
+_filter_box.caption(f"Showing **{len(summary_view)}** of {len(summary)} pids.")
 
 # Tab ORDER is set here; the `with tab_*:` bodies further down can stay in any
 # order, Streamlit renders each into its own tab regardless.
