@@ -90,13 +90,18 @@ def list_key(v):
 
 def _day(series):
     """Dates from '2026-11-16', '16/11/2026', '15-Nov-2026' or a timestamp."""
+    # Each pass becomes plain dates on its own before they are combined:
+    # joining two datetime columns can give plain objects on newer pandas
+    # (different time units), and .dt then fails.
     s = pd.Series(series).astype(str).str.strip()
-    d = pd.to_datetime(s, errors="coerce", format="ISO8601", utc=True)
-    rest = d.isna()
-    if rest.any():
-        d2 = pd.to_datetime(s[rest], errors="coerce", dayfirst=True, utc=True)
-        d = d.where(~rest, d2)
-    return d.dt.tz_localize(None).dt.date
+    out = pd.Series(pd.NaT, index=s.index, dtype=object)
+    for kw in ({"format": "ISO8601"}, {"format": "mixed", "dayfirst": True}):
+        rest = out.isna()
+        if not rest.any():
+            break
+        d = pd.to_datetime(s[rest], errors="coerce", utc=True, **kw)
+        out[rest] = pd.Series(d.dt.date, index=d.index).where(d.notna(), pd.NaT)
+    return out.values
 
 
 def clean_schedule(raw, amap):
@@ -125,20 +130,19 @@ _OTHER = {"other", "others", "oth", "-96", "96", "-77", "77"}
 def _hhmm(series):
     """'07:32', '7:32:10 AM', '2026-11-16T07:32:00.000Z' or 'Nov 16, 2026
     7:32:10 AM' -> '07:32'. Blank stays blank."""
+    # Read straight from the text, not through pd.to_datetime: a column with
+    # mixed formats (or time zones) comes back as plain objects on newer
+    # pandas, and .dt then fails. The first H:MM in the text is the time; an
+    # AM/PM after it is applied. SurveyCTO writes Sierra Leone time (GMT).
     s = pd.Series(series).astype(str).str.strip()
     out = pd.Series("", index=s.index)
-    keep = ~s.str.lower().isin(_BLANK)
-    t = pd.to_datetime(s[keep], errors="coerce", format="ISO8601")
-    rest = t.isna()
-    if rest.any():
-        t2 = pd.to_datetime(s[keep][rest], errors="coerce", format="mixed")
-        t = t.where(~rest, t2)
-    out[keep] = t.dt.strftime("%H:%M").fillna("")
-    # A bare '7:32' that pandas could not read: keep the hour and minutes.
-    bare = keep & (out == "") & s.str.match(r"^\d{1,2}:\d{2}")
-    if bare.any():
-        m = s[bare].str.extract(r"^(\d{1,2}):(\d{2})")
-        out[bare] = m[0].str.zfill(2) + ":" + m[1]
+    m = s.str.extract(r"(?:^|[T\s])(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?\s*([AaPp][Mm])?")
+    ok = m[0].notna() & ~s.str.lower().isin(_BLANK)
+    if ok.any():
+        h = m.loc[ok, 0].astype(int)
+        ampm = m.loc[ok, 2].fillna("").str.upper()
+        h = h.where(ampm != "PM", h % 12 + 12).where(ampm != "AM", h % 12)
+        out[ok] = h.astype(str).str.zfill(2) + ":" + m.loc[ok, 1]
     return out
 
 
