@@ -272,7 +272,7 @@ footer { color: var(--muted); font-size: 13px; }
       <div class="panel queue" style="--qc: var(--red)">
         <h3>🔁 To be revised — Data Team checked</h3>
         <p>Cases the supervisor put back to work in Supervisor review (status ACTIVE, or reopened). <strong>Call these first</strong>, and read <code>supervisor_note</code>: it says why and what to do. The first call afterwards moves the pid back into its normal queue; while it is listed here it does not appear in the other queues.</p>
-        <p><strong>✔ done:</strong> once the supervisor has taken the action in the note, tick the case, choose who did it under <em>Done by</em> and click <strong>Mark as done</strong>. It is saved in the decisions log, and the table shows who and when. The case stays in the list until someone calls it; a tick from before a later reopen does not count.</p>
+        <p><strong>✔ done:</strong> once the supervisor has taken the action in the note, tick the case, choose who did it under <em>Done by</em> and click <strong>Mark as done</strong>. It is saved in the decisions log and the case <strong>leaves this list</strong>, so it does not look like new work: it goes back to its usual queue (with the note) until someone calls it. Ticked cases are listed, with who and when, under <em>✔ Done</em> below the table, and no longer count in To fix. A tick from before a later reopen does not count.</p>
       </div>
 
       <div class="panel queue" style="--qc: var(--red)">

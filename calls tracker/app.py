@@ -754,6 +754,7 @@ with tab_summary:
     # nobody has called since: same rule as 🔁 To be revised, whole roster
     _sent_back = review.reactivated(decisions, subs, assign.utc_now())
     _sent_back = _sent_back[_sent_back["pid"].isin(open_with_buckets(cases_roster, summary)["pid"])]
+    _sent_back = _sent_back[~_sent_back["pid"].isin(review.actioned(decisions, _sent_back))]
     _fix = [(len(_sent_back), "sent back by the Data Team to revise", RED,
              "call first · 🔁 To be revised"),
             (len(_rc), "called again after completing", RED, "table below"),
@@ -860,7 +861,12 @@ with tab_action:
         _open_all = open_with_buckets(cases_roster, summary)
         _react = review.reactivated(decisions, subs, assign.utc_now())
         _react = _react[_react["pid"].isin(_open_all["pid"])]
-        st.markdown(f"#### 🔁 To be revised — Data Team checked ({len(_react)})")
+        # A case the supervisor ticked ✔ done leaves this list (it is not new
+        # work any more) and goes back to its usual queue until it is called;
+        # it is listed under "Done" below for the Data Team.
+        _done = review.actioned(decisions, _react)
+        _react_todo = _react[~_react["pid"].isin(_done)]
+        st.markdown(f"#### 🔁 To be revised — Data Team checked ({len(_react_todo)})")
         if _react.empty:
             st.caption("Nothing here right now.")
         else:
@@ -890,7 +896,6 @@ with tab_action:
             # note; saved in the decisions log (followup / actioned), so the
             # Data Team sees who did it and when. A tick from before a later
             # reopen does not count.
-            _done = review.actioned(decisions, _react)
             _rv["done"] = _rv["pid"].isin(_done)
             _rv["done_by"] = _rv["pid"].map(lambda p: _done[p][0] if p in _done else "")
             _rv["done_at"] = _rv["pid"].map(
@@ -899,12 +904,16 @@ with tab_action:
                 st.session_state["revise_round"] = 0
             if st.session_state.get("revise_flash"):
                 st.success(st.session_state.pop("revise_flash"))
-            st.caption(f"✔ {len(_done)} of {len(_rv)} done. Tick a case once the action in "
-                       "the note has been taken, choose who did it, and save.")
+            _todo_rows = _rv[~_rv["done"]]
+            if _todo_rows.empty:
+                st.caption("✔ All done.")
+            else:
+                st.caption("Tick a case once the action in the note has been taken, choose who "
+                           "did it, and save. It then leaves this list.")
             _ed = ch.data_editor(
-                _rv[["done"] + _rcols + ["done_by", "done_at"]], hide_index=True,
+                _todo_rows[["done"] + _rcols], hide_index=True,
                 width="stretch", key=f"revise_editor_{st.session_state['revise_round']}",
-                disabled=[c for c in _rcols + ["done_by", "done_at"]],
+                disabled=_rcols,
                 column_config={"done": st.column_config.CheckboxColumn(
                     "✔ done", width="small",
                     help="Tick once the supervisor has taken the action in the note.")})
@@ -931,7 +940,13 @@ with tab_action:
                         st.session_state["revise_flash"] = f"✔ Marked {len(_new)} as done."
                         st.cache_data.clear()
                         st.rerun()
-        open_cases = open_cases[~open_cases["pid"].isin(_react["pid"])]
+            _done_rows = _rv[_rv["done"]]
+            if len(_done_rows):
+                with st.expander(f"✔ Done ({len(_done_rows)}): back in their usual list until called"):
+                    ch.dataframe(_done_rows[_rcols + ["done_by", "done_at"]],
+                                 width="stretch", hide_index=True)
+        # ticked ones go back to their usual queue; the rest wait here
+        open_cases = open_cases[~open_cases["pid"].isin(_react_todo["pid"])]
 
         BUCKETS = [
             ("Callback", "⏰ To be followed up"),
