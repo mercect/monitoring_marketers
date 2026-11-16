@@ -258,8 +258,68 @@ def calls_of_day(subs, day, pid_list):
 
 
 # ------------------------------------------------------------------ the day ---
-def day_table(day, schedule, checkins, calls, known=None):
-    """One row per enumerator planned, checked in or calling on `day`."""
+def _name_score(a, b):
+    """How surely two spellings are one person, 0..1. Needs the first names to
+    agree and the surnames to be close; middle names and initials may differ
+    ('Freda R psongo' ~ 'Freda Rose Psongo', 'Mariama M Sesay' ~ 'Mariama
+    Musu Sesay', 'Alie Suffian Keilie' ~ 'Alie suffian Kallie')."""
+    from difflib import SequenceMatcher as SM
+    ta, tb = enumerators.norm(a).split(), enumerators.norm(b).split()
+    if not ta or not tb:
+        return 0.0
+    if len(ta) < 2 or len(tb) < 2 or ta[0][0] != tb[0][0] or ta[-1][0] != tb[-1][0]:
+        return 0.0                       # 'Salieu' is not 'Alieu'
+    first = SM(None, ta[0], tb[0]).ratio()
+    last = SM(None, ta[-1], tb[-1]).ratio()
+    whole = SM(None, " ".join(ta), " ".join(tb)).ratio()
+    if first < 0.8 or last < 0.6 or whole < 0.8:
+        return 0.0
+    return whole
+
+
+def align_names(day, schedule, checkins, calls):
+    """Spellings on the check-in form or the call form that match nobody on
+    the schedule are joined to the planned person they clearly are (see
+    _name_score), when that person is the one best match both ways. Returns
+    (checkins, calls, typed): typed = {planned name: the spelling used}, so
+    the row can say which spelling to add to also_typed_as."""
+    planned = list(schedule.loc[schedule["date"] == day, "enumerator"].drop_duplicates())
+    chk_day = checkins["date"] == day
+    have = set(checkins.loc[chk_day, "enumerator"])
+
+    def pair(extra, cands):
+        out = {}
+        for n in extra:
+            sc = sorted(((_name_score(n, p), p) for p in cands), reverse=True)
+            if not sc or sc[0][0] == 0 or (len(sc) > 1 and sc[1][0] == sc[0][0]):
+                continue
+            p = sc[0][1]
+            back = max(((_name_score(m, p), m) for m in extra), default=(0, None))
+            if back[1] == n:
+                out[n] = p
+        return out
+
+    extra_chk = [n for n in have if n not in planned]
+    m_chk = pair(extra_chk, [p for p in planned if p not in have])
+    extra_calls = [n for n in calls["enumerator"].unique() if n not in planned]
+    m_calls = {**pair(extra_calls, planned), **{k: v for k, v in m_chk.items()}}
+    m_calls = {k: v for k, v in m_calls.items() if k in set(extra_calls)}
+
+    checkins = checkins.copy()
+    checkins.loc[chk_day, "enumerator"] = checkins.loc[chk_day, "enumerator"].replace(m_chk)
+    calls = calls.assign(enumerator=calls["enumerator"].replace(m_calls))
+    typed = {}
+    for k, v in list(m_chk.items()) + list(m_calls.items()):
+        typed.setdefault(v, [])
+        if k not in typed[v]:
+            typed[v].append(k)
+    return checkins, calls, {p: " / ".join(s) for p, s in typed.items()}
+
+
+def day_table(day, schedule, checkins, calls, known=None, typed=None):
+    """One row per enumerator planned, checked in or calling on `day`.
+    typed: from align_names, the spelling a planned person was matched by."""
+    typed = typed or {}
     sch = schedule[schedule["date"] == day].drop_duplicates("enumerator")
     chk = checkins[checkins["date"] == day].drop_duplicates("enumerator")
     names = list(dict.fromkeys(list(sch["enumerator"]) + list(chk["enumerator"])
@@ -290,7 +350,9 @@ def day_table(day, schedule, checkins, calls, known=None):
             flags.append(f"🟠 {len(other)} call(s) on another list")
         if c is not None and pd.notna(late) and late > LATE_MIN:
             flags.append(f"🟡 Late {int(late)} min")
-        if known and n not in known:
+        if n in typed:
+            flags.append(f"🟣 Matched as \"{typed[n]}\": add it to also_typed_as")
+        elif known and n not in known:
             flags.append("⚪ Name not in the enumerators tab")
         rows.append({
             "enumerator": n,

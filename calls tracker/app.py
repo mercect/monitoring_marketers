@@ -37,7 +37,8 @@ import assign
 import attendance
 import column_help as ch
 import enumerators
-from calllist import assigned_list_number, first_call_date, lists_due, with_list_order
+from calllist import (active_lists, assigned_list_number, first_call_date, lists_due,
+                      with_list_order)
 import review
 import review_tab
 
@@ -624,10 +625,14 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 _filter_box = st.container(key="filter_bar")
 with _filter_box:
+    # Starts on the lists being called today (first call day to last call day,
+    # e.g. 12Nov-D4 on 16-18 Nov); clear it to see every list.
+    _active_today = [v for v in active_lists(summary, pd.Timestamp.now(tz="UTC").date())
+                     if v in list_options]
     picked_lists = st.multiselect("🔎 Filter · Priority list (assigned_list)", list_options,
-                                  key="flt_lists", placeholder="All lists",
-                                  help="Pick one or more call lists, e.g. 12Nov-D4. "
-                                       "Leave empty for all.")
+                                  default=_active_today, key="flt_lists", placeholder="All lists",
+                                  help="Starts on the lists being called today. Pick other "
+                                       "call lists, or clear it to see all.")
 base_pids = set(summary.loc[_aday.isin(picked_lists).values, "pid"]) if picked_lists else None
 keep_pids = base_pids
 
@@ -881,7 +886,51 @@ with tab_action:
             # the last real call (its code and when).
             _rcols = [c for c in ["pid", "supervisor_note", "last_callcode",
                                   "last_submission_time"] if c in _rv.columns]
-            ch.dataframe(_rv[_rcols], width="stretch", hide_index=True)
+            # ✔ done: the supervisor ticks a case once they have acted on the
+            # note; saved in the decisions log (followup / actioned), so the
+            # Data Team sees who did it and when. A tick from before a later
+            # reopen does not count.
+            _done = review.actioned(decisions, _react)
+            _rv["done"] = _rv["pid"].isin(_done)
+            _rv["done_by"] = _rv["pid"].map(lambda p: _done[p][0] if p in _done else "")
+            _rv["done_at"] = _rv["pid"].map(
+                lambda p: f"{_done[p][1]:%Y-%m-%d %H:%M}" if p in _done else "")
+            if "revise_round" not in st.session_state:
+                st.session_state["revise_round"] = 0
+            if st.session_state.get("revise_flash"):
+                st.success(st.session_state.pop("revise_flash"))
+            st.caption(f"✔ {len(_done)} of {len(_rv)} done. Tick a case once the action in "
+                       "the note has been taken, choose who did it, and save.")
+            _ed = ch.data_editor(
+                _rv[["done"] + _rcols + ["done_by", "done_at"]], hide_index=True,
+                width="stretch", key=f"revise_editor_{st.session_state['revise_round']}",
+                disabled=[c for c in _rcols + ["done_by", "done_at"]],
+                column_config={"done": st.column_config.CheckboxColumn(
+                    "✔ done", width="small",
+                    help="Tick once the supervisor has taken the action in the note.")})
+            _new = _ed[_ed["done"] & ~_ed["pid"].isin(_done)]
+            if len(_new):
+                _sups = enumerators.supervisors(enum_roster)
+                _by = st.selectbox("Done by", _sups, index=None, key="revise_by",
+                                   placeholder="Who took the action (goes into the log)") or ""
+                _problem = review.writer_problem()
+                if _problem:
+                    st.info(f"Saving is off: {_problem}")
+                if st.button(f"✔ Mark {len(_new)} as done", type="primary",
+                             disabled=bool(_problem) or not _by.strip()):
+                    try:
+                        review.append_decisions([
+                            {"sup_time": review.now_text(), "sup_by": _by.strip(), "pid": p,
+                             "sup_type": "followup", "sup_action": "actioned"}
+                            for p in _new["pid"]])
+                    except Exception as e:
+                        st.error(f"Not saved — {e}")
+                    else:
+                        st.session_state["revise_round"] += 1
+                        st.session_state.pop("revise_by", None)
+                        st.session_state["revise_flash"] = f"✔ Marked {len(_new)} as done."
+                        st.cache_data.clear()
+                        st.rerun()
         open_cases = open_cases[~open_cases["pid"].isin(_react["pid"])]
 
         BUCKETS = [
@@ -1128,8 +1177,13 @@ with tab_attend:
     _pid_list = (summary.drop_duplicates("pid").set_index("pid")["assigned_list"]
                  if "assigned_list" in summary.columns else pd.Series(dtype=str))
     _calls = attendance.calls_of_day(subs, _day, _pid_list)
+    # A spelling missing from the enumerators tab ("Freda R psongo" for
+    # "Freda Rose Psongo") is joined to the planned person it clearly is,
+    # and flagged 🟣 so the spelling can be added to also_typed_as.
+    _chk, _calls, _typed = attendance.align_names(_day, _sch, _chk, _calls)
     _rows = attendance.day_table(_day, _sch, _chk, _calls,
-                                 known=set(name_map.values()) if name_map else None)
+                                 known=set(name_map.values()) if name_map else None,
+                                 typed=_typed)
     if _rows.empty:
         st.info("Nobody planned, checked in or calling on this day.")
     else:
@@ -1175,6 +1229,7 @@ with tab_attend:
                                     "flag": st.column_config.Column(
                                         help="🔴 no check-in · 🟠 calls on another list · "
                                              "🔵 not on the schedule · 🟡 late · "
+                                             "🟣 matched by a close spelling (add it to also_typed_as) · "
                                              "⚪ name not in the enumerators tab")})
         _off = attendance.off_list_calls(_rows, _calls)
         with st.expander(f"🟠 Calls on another list ({len(_off)})"):

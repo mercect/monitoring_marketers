@@ -47,7 +47,13 @@ TYPES = {"validation": {"confirmed", "corrected", "sent_back"},
          # reopened = any closed case put back to work by the supervisor
          "decision": {"closed", "keep_trying", "reopened"},
          # a pid handed out for its first call (assign.py); changes no status
-         "assignment": {"assigned"}}
+         "assignment": {"assigned"},
+         # the supervisor confirms they acted on a case in To be revised;
+         # changes no status, note or queue
+         "followup": {"actioned"}}
+# Entry types that are paperwork: never the "newest entry" that decides a
+# pid's note, validation or reactivation.
+PAPERWORK = {"assignment", "followup"}
 FINAL_VALIDATION = {"confirmed", "corrected"}
 NOTE_ACTIONS = {"sent_back", "keep_trying", "reopened"}
 # Entries that send a case back to the call piles (status ACTIVE in the review
@@ -372,7 +378,7 @@ def validation_queue(summary, decisions, keys):
 def notes_by_pid(decisions):
     """pid -> the supervisor's note for the enumerators: the comment on the
     pid's newest entry when that entry is a keep_trying or a sent_back."""
-    lp = latest_per_pid(decisions)
+    lp = latest_per_pid(decisions[~decisions["sup_type"].isin(PAPERWORK)])
     if lp.empty:
         return {}
     lp = lp[lp["sup_action"].isin(NOTE_ACTIONS) & lp["sup_comment"].ne("")]
@@ -427,6 +433,23 @@ def editor_unlock_form():
                 st.error("Wrong editor password.")
 
 
+
+def actioned(decisions, react):
+    """pid -> (who, when) for the pids in `react` (reactivated()) whose
+    supervisor ticked "done" AFTER the case was put back to work: an older
+    tick, from before a later reopen, does not count."""
+    if decisions is None or decisions.empty or react is None or react.empty:
+        return {}
+    d = decisions[decisions["sup_type"] == "followup"].copy()
+    if d.empty:
+        return {}
+    d["_t"] = pd.to_datetime(d["sup_time"], errors="coerce")
+    since = pd.Series(pd.to_datetime(react["reactivated_at"]).values, index=react["pid"].values)
+    d = d[d["pid"].isin(since.index)]
+    d = d[d["_t"] >= d["pid"].map(since)]
+    d = d.sort_values("_t").drop_duplicates("pid", keep="last")
+    return {p: (b, t) for p, b, t in zip(d["pid"], d["sup_by"], d["_t"])}
+
 def reactivated(decisions, subs, now):
     """Pids put back to work (sent back or reopened) that nobody has called
     since: pid, reactivated_at, reactivated_by, supervisor_note, minutes. Only
@@ -434,7 +457,7 @@ def reactivated(decisions, subs, now):
     cols = ["pid", "reactivated_at", "reactivated_by", "supervisor_note", "minutes"]
     if decisions is None or decisions.empty or subs.empty:
         return pd.DataFrame(columns=cols)
-    lp = latest_per_pid(decisions[decisions["sup_type"] != "assignment"])
+    lp = latest_per_pid(decisions[~decisions["sup_type"].isin(PAPERWORK)])
     lp = lp[lp["sup_action"].isin(REACTIVATE)].copy()
     if lp.empty:
         return pd.DataFrame(columns=cols)

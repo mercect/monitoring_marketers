@@ -316,6 +316,24 @@ def check_attendance(fails):
        new.at["Ann B", "arrived"] == "07:30" and new.at["Ann B", "left"] == "14:00")
     ok("new form: tablet read", new.at["Cy D", "tablet"] == "T07")
 
+    # A close spelling on the form joins the planned person, and says so.
+    sch2 = at.clean_schedule(pd.DataFrame({
+        "date": "2026-11-16", "enumerator": ["Freda Rose Psongo", "Mohammed Tunis", "Salieu Nabay"],
+        "team": "A1", "shift_start": "7:00", "shift_end": "14:00", "list": "12Nov-D4"}), {})
+    chk2 = at.clean_checkins(pd.DataFrame({
+        "today": "2026-11-16", "starttime": "2026-11-16T07:30:00.000Z",
+        "enum_name": ["Freda R psongo", "Mohamed Tunis", "Alieu Nabay"],
+        "sod_arrival_hhmm": "07:30"}), {})
+    calls2 = pd.DataFrame({"enumerator": ["Mohamed Tunis"], "pid": ["p1"], "time": "08:00",
+                           "callcode": "2_NA", "list": "12Nov-D4", "list_key": at.list_key("12Nov-D4")})
+    c2, k2, typed = at.align_names(day, sch2, chk2, calls2)
+    t2 = at.day_table(day, sch2, c2, k2, typed=typed).set_index("enumerator")
+    ok("close spellings join the planned person",
+       t2.at["Freda Rose Psongo", "checked_in"] == "✅" and t2.at["Mohammed Tunis", "calls"] == 1
+       and "also_typed_as" in t2.at["Freda Rose Psongo", "flag"])
+    ok("a different first letter is not joined",
+       t2.at["Salieu Nabay", "checked_in"] == "—" and "Alieu Nabay" in t2.index)
+
 
 def check_lists_due(fails):
     """calllist.py: which list is due on which day, and how many are left."""
@@ -334,6 +352,42 @@ def check_lists_due(fails):
     ok("on the 17th: today's two lists, then 12Nov-D4 overdue",
        list(d17["assigned_list"]) == ["12Nov-D5", "13Nov-D4", "12Nov-D4"])
     ok("old lists are left out", "4" not in set(lists_due(r, dt.date(2026, 11, 17))["assigned_list"]))
+
+
+def check_active_lists_and_done(fails):
+    """calllist.active_lists (the filter's default) and review.actioned (the
+    done tick in To be revised)."""
+    import datetime as dt
+    import warnings
+    warnings.filterwarnings("ignore", message="No runtime found")
+    from calllist import active_lists
+    from review import actioned, clean_log, COLUMNS, reactivated, notes_by_pid
+    ok = lambda name, cond: None if cond else fails.append(f"[active/done] {name}")
+    r = pd.DataFrame({"pid": ["a", "b", "c"], "date_recruited": "12/11/2026",
+                      "assigned_list": ["12Nov-D4", "12Nov-D5", ""],
+                      "first_call_date": ["16Nov2026", "17Nov2026", ""],
+                      "last_call_day": ["18Nov2026", "19Nov2026", ""]})
+    ok("16 Nov: only 12Nov-D4", active_lists(r, dt.date(2026, 11, 16)) == ["12Nov-D4"])
+    ok("18 Nov: both lists", active_lists(r, dt.date(2026, 11, 18)) == ["12Nov-D4", "12Nov-D5"])
+    ok("20 Nov: none", active_lists(r, dt.date(2026, 11, 20)) == [])
+    ok("without the sheet's dates: recruited + day number",
+       active_lists(r.drop(columns=["first_call_date", "last_call_day"]), dt.date(2026, 11, 16)) == ["12Nov-D4"])
+
+    def dec(rows):
+        return clean_log(pd.DataFrame([dict(zip(COLUMNS, r + ("",))) for r in rows]))
+    subs = pd.DataFrame([dict(pid="A", endtime="2026-11-01T10:00:00.000Z", callcode="2_SC",
+                              KEY="a1", enum_name="E", survey_type="Long Survey")])
+    d = dec([("2026-11-04 08:00:00", "S", "A", "decision", "reopened", "", "call evening", "a1"),
+             ("2026-11-04 09:00:00", "Sup", "A", "followup", "actioned", "", "", "")])
+    now = pd.Timestamp("2026-11-04 10:00")
+    react = reactivated(d, subs, now)
+    ok("a done tick keeps the case in To be revised", list(react["pid"]) == ["A"])
+    ok("a done tick keeps the note", "call evening" in notes_by_pid(d).get("A", ""))
+    ok("the tick is read back", actioned(d, react).get("A", ("",))[0] == "Sup")
+    old = dec([("2026-11-03 09:00:00", "Sup", "A", "followup", "actioned", "", "", ""),
+               ("2026-11-04 08:00:00", "S", "A", "decision", "reopened", "", "again", "a1")])
+    ok("a tick from before a later reopen does not count",
+       actioned(old, reactivated(old, subs, now)) == {})
 
 
 def check_baseline(s, fails):
@@ -388,6 +442,7 @@ def main():
     check_reopen(fails)
     check_attendance(fails)
     check_lists_due(fails)
+    check_active_lists_and_done(fails)
     print("supervisor review rules + enumerator names + assignments + reopen + attendance: checked")
 
     # --- fixture: invariants + baseline + determinism -------------------------
