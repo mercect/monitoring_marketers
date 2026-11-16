@@ -359,6 +359,19 @@ def check_attendance(fails):
     ok("a different first letter is not joined",
        t2.at["Salieu Nabay", "checked_in"] == "—" and "Alieu Nabay" in t2.index)
 
+    # Start form typed exactly, end form typed another way: one row, both halves.
+    chk3 = at.clean_checkins(pd.DataFrame({
+        "today": "2026-11-16", "starttime": ["2026-11-16T07:30:00.000Z", "2026-11-16T14:05:00.000Z"],
+        "enum_name": ["Freda Rose Psongo", "Freda R psongo"],
+        "form_part": ["start", "end"], "sod_arrival_hhmm": ["07:30", ""],
+        "eod_time": ["", "14:05"], "eod_balance": ["", "12"]}), {})
+    c3, k3, typed3 = at.align_names(day, sch2, chk3, calls2.iloc[0:0])
+    t3 = at.day_table(day, sch2, c3, k3, typed=typed3)
+    fr = t3[t3["enumerator"] == "Freda Rose Psongo"]
+    ok("start and end typed differently: one row with both",
+       len(fr) == 1 and fr["arrived"].iloc[0] == "07:30" and fr["left"].iloc[0] == "14:05"
+       and fr["balance_end"].iloc[0] == "12" and "Freda R psongo" not in set(t3["enumerator"]))
+
 
 def check_lists_due(fails):
     """calllist.py: which list is due on which day, and how many are left."""

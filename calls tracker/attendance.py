@@ -120,7 +120,7 @@ def clean_schedule(raw, amap):
     out["shift"] = [f"{a}–{b}" if a and b else a or b for a, b in zip(out["shift_start"], end)]
     out["list_key"] = out["list"].map(list_key)
     out = out[out["date"].notna() & (out["enumerator"] != "")]
-    return out[cols].reset_index(drop=True)
+    return one_row_each(out[cols].reset_index(drop=True))
 
 
 _BLANK = {"", "nan", "none", "null", "."}
@@ -153,6 +153,26 @@ def _first(*series):
         s = s.astype(str).str.strip()
         out = out.where(~out.str.lower().isin(_BLANK), s)
     return out.where(~out.str.lower().isin(_BLANK), "")
+
+
+END_COLS = ("left", "device_end", "topup_end", "balance_end")
+
+
+def one_row_each(checkins):
+    """One row per enumerator per day, the start-of-day and end-of-day answers
+    side by side. Needed again after align_names, when the start and end
+    forms were typed with two spellings of one name: start answers come from
+    the first row that has them, end answers from the last."""
+    if checkins.empty or not checkins.duplicated(["date", "enumerator"]).any():
+        return checkins
+
+    def pick(s, last=False):
+        v = [x for x in s if pd.notna(x) and str(x).strip() not in ("", "nan")]
+        return (v[-1] if last else v[0]) if v else s.iloc[0]
+    agg = {c: (lambda s, c=c: pick(s, last=c in END_COLS))
+           for c in checkins.columns if c not in ("date", "enumerator")}
+    out = checkins.groupby(["date", "enumerator"], sort=False, as_index=False).agg(agg)
+    return out[list(checkins.columns)].reset_index(drop=True)
 
 
 def clean_checkins(raw, amap):
@@ -287,7 +307,7 @@ def align_names(day, schedule, checkins, calls):
     chk_day = checkins["date"] == day
     have = set(checkins.loc[chk_day, "enumerator"])
 
-    def pair(extra, cands):
+    def pair(extra, cands, both_ways=True):
         out = {}
         for n in extra:
             sc = sorted(((_name_score(n, p), p) for p in cands), reverse=True)
@@ -295,18 +315,22 @@ def align_names(day, schedule, checkins, calls):
                 continue
             p = sc[0][1]
             back = max(((_name_score(m, p), m) for m in extra), default=(0, None))
-            if back[1] == n:
+            if back[1] == n or not both_ways:
                 out[n] = p
         return out
 
+    # Check-ins: the start and the end form may each use a different spelling
+    # of one planned person (even when one of them is the exact name), so any
+    # planned person can be the match and several spellings may join one row.
     extra_chk = [n for n in have if n not in planned]
-    m_chk = pair(extra_chk, [p for p in planned if p not in have])
+    m_chk = pair(extra_chk, planned, both_ways=False)
     extra_calls = [n for n in calls["enumerator"].unique() if n not in planned]
     m_calls = {**pair(extra_calls, planned), **{k: v for k, v in m_chk.items()}}
     m_calls = {k: v for k, v in m_calls.items() if k in set(extra_calls)}
 
     checkins = checkins.copy()
     checkins.loc[chk_day, "enumerator"] = checkins.loc[chk_day, "enumerator"].replace(m_chk)
+    checkins = one_row_each(checkins)
     calls = calls.assign(enumerator=calls["enumerator"].replace(m_calls))
     typed = {}
     for k, v in list(m_chk.items()) + list(m_calls.items()):
@@ -366,6 +390,8 @@ def day_table(day, schedule, checkins, calls, known=None, typed=None):
             "topup": c["topup"] if c is not None else "",
             "left": left,
             "device_end": d["device_end"] if d is not None else "",
+            "topup_end": d["topup_end"] if d is not None else "",
+            "balance_end": d["balance_end"] if d is not None else "",
             "calls": len(mine),
             "on_list": on,
             "other_list": len(other) if planned else len(mine),
@@ -374,7 +400,7 @@ def day_table(day, schedule, checkins, calls, known=None, typed=None):
         })
     out = pd.DataFrame(rows, columns=["enumerator", "team", "planned_list", "shift", "checked_in",
                                       "arrived", "late_min", "tablet", "topup", "left",
-                                      "device_end", "calls", "on_list",
+                                      "device_end", "topup_end", "balance_end", "calls", "on_list",
                                       "other_list", "other_lists", "flag"])
     order = out["flag"].map(lambda f: 0 if "🔴" in f else 1 if "🟠" in f else 2 if f else 3)
     return out.assign(_o=order).sort_values(["_o", "team", "enumerator"]).drop(columns="_o") \

@@ -84,6 +84,8 @@ HELP = {
     "tablet": "Tablet taken for the day, from the start-of-day form.",
     "topup": "Top-up check on the start-of-day form (sod_topup).",
     "device_end": "Device status on the end-of-day form, if filled.",
+    "topup_end": "Top-up status (or amount) on the end-of-day form.",
+    "balance_end": "Airtime balance left, on the end-of-day form.",
     "calls": "Calls this person submitted on the day.",
     "on_list": "Calls on pids of their planned list.",
     "other_list": "Calls on pids of another list (all calls, if not on the schedule).",
