@@ -404,6 +404,15 @@ def check_active_lists_and_done(fails):
     t = tablet_column(pd.DataFrame({"rs_tab": ["Tab 1", "other", ""], "rs_tab_oth": ["", "Moto 8", ""],
                                     "rs_tab_id": ["", "", "old 3"]}))
     ok("tablet from rs_tab / rs_tab_oth / rs_tab_id", list(t["rs_tab_id"]) == ["Tab 1", "Moto 8", "old 3"])
+    # the form stores the tablet's number; the dashboard shows its name
+    t = tablet_column(pd.DataFrame({"rs_tab": ["12", "21.0", "-55", "-55", ""],
+                                    "rs_tab_oth": ["", "", "Borrowed phone", "", ""],
+                                    "rs_tab_id": ["", "", "", "", "7"],
+                                    "tab_id": ["60", "-55", "Doogee Tab 11", "", "99"]}))
+    ok("tablet codes become names", list(t["rs_tab_id"]) ==
+       ["Moto G22 Phone 4", "Doogee Tab 11", "Borrowed phone", "Other (not specified)", "7"])
+    ok("tab_id codes become names", list(t["tab_id"]) ==
+       ["Samsung Tab 25", "Other (not specified)", "Doogee Tab 11", "", "99"])
 
 
 def check_baseline(s, fails):

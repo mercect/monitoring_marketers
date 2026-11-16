@@ -125,18 +125,65 @@ def rename_list_columns(df):
     return df.rename(columns=ren) if ren else df
 
 
+# The form's tablet list (choice value -> label). The form stores the number;
+# the dashboard shows the name. -55 "Other specify" takes the typed name.
+TABLETS = {
+    1: "Moto G13 002", 2: "Moto G13 005", 3: "Moto G13 004", 4: "Moto G13 008",
+    5: "Moto G13 006", 6: "Moto G13 007", 7: "Moto G14 001", 8: "Moto G14 002",
+    9: "Moto G14 004", 10: "Moto G22 Phone 2", 11: "Moto G22 Phone 3",
+    12: "Moto G22 Phone 4", 13: "Moto G22 Phone 5", 14: "Moto G22 Phone 6",
+    15: "Moto G22 Phone 11", 16: "Moto G22 Phone 12", 17: "Moto G22 Phone 15",
+    18: "Moto G22 Phone 17", 19: "Moto G22 Phone 18", 20: "Moto G22 Phone 20",
+    21: "Doogee Tab 11", 22: "Doogee Tab 12", 23: "Doogee Tab 13", 24: "Doogee Tab 14",
+    25: "Doogee Tab 15", 26: "Doogee Tab 17", 27: "Doogee Tab 18", 28: "Doogee Tab 19",
+    29: "Doogee Tab 20", 30: "Doogee Tab 21", 31: "Doogee Tab 22", 32: "Doogee Tab 23",
+    33: "Doogee Tab 24", 34: "Doogee Tab 26", 35: "Doogee Tab 27", 36: "Doogee Tab 28",
+    37: "Doogee Tab 29", 38: "Doogee Tab 30", 39: "Doogee Tab 31", 40: "Doogee Tab 32",
+    41: "Doogee Tab 33", 42: "Doogee Tab 34", 43: "Doogee Tab 35", 44: "Doogee Tab 36",
+    45: "Doogee Tab 37", 46: "Doogee Tab 38", 47: "Doogee Tab 39",
+    48: "Samsung Tab 20", 49: "Samsung Tab 21", 50: "Samsung Tab 22", 51: "Samsung Tab 23",
+    52: "Samsung Tab 27", 53: "Samsung Tab 28", 54: "Samsung Tab 29", 55: "Samsung Tab 30",
+    56: "Samsung Tab 31", 57: "Samsung Tab 32", 58: "Samsung Tab 33", 59: "Samsung Tab 34",
+    60: "Samsung Tab 25",
+}
+TABLET_OTHER = -55
+
+
+def tablet_name(code, other=""):
+    """'12' / '12.0' -> 'Moto G22 Phone 4'; -55 -> the typed name (or 'Other');
+    anything that is not a code on the list (a name typed in an older round)
+    is kept as it is."""
+    s = str(code if code is not None else "").strip()
+    if s.lower() in ("", "nan", "none"):
+        return ""
+    try:
+        n = int(float(s))
+    except ValueError:
+        return s
+    if n == TABLET_OTHER:
+        o = str(other or "").strip()
+        return o if o.lower() not in ("", "nan", "none") else "Other (not specified)"
+    return TABLETS.get(n, s)
+
+
 def tablet_column(df):
     """The tablet holding a partial save. The form now asks it as rs_tab (the
-    tablet chosen from the list) and rs_tab_oth (typed when it is not on the
-    list); older submissions used rs_tab_id. All three meet in rs_tab_id, the
-    column the rollup reads: rs_tab_oth when filled, else rs_tab, else the old
-    rs_tab_id."""
-    if "rs_tab" not in df.columns and "rs_tab_oth" not in df.columns:
-        return df
+    tablet chosen from the list, stored as its number) and rs_tab_oth (typed
+    when it is not on the list); older submissions used rs_tab_id. All three
+    meet in rs_tab_id, the column the rollup reads, as the tablet's NAME:
+    rs_tab_oth when filled, else rs_tab, else the old rs_tab_id. tab_id (the
+    long survey's tablet) is turned from a number into the name too."""
     out = df.copy()
     blank = pd.Series("", index=out.index)
+    if "tab_id" in out.columns:
+        t_oth = out.get("tab_id_oth", blank).fillna("").astype(str)
+        out["tab_id"] = [tablet_name(c, o) for c, o in zip(out["tab_id"], t_oth)]
+    if "rs_tab" not in out.columns and "rs_tab_oth" not in out.columns:
+        return out
     oth = out.get("rs_tab_oth", blank).fillna("").astype(str).str.strip()
-    pick = out.get("rs_tab", blank).fillna("").astype(str).str.strip()
+    pick = pd.Series([tablet_name(c, o) for c, o in
+                      zip(out.get("rs_tab", blank).fillna(""), oth)], index=out.index)
+    # The old rs_tab_id was typed by hand: kept as typed, never read as a code.
     old = out.get("rs_tab_id", blank).fillna("").astype(str).str.strip()
     out["rs_tab_id"] = oth.where(oth != "", pick.where(pick != "", old))
     return out
