@@ -226,6 +226,23 @@ def check_assignments(fails):
     ok("ticking #1 is in order", assign.out_of_order(["p1"], r, {"p2"}) == {})
 
 
+def check_decision_list_info(fails):
+    """review.py: every saved decision carries the pid's list and call order."""
+    import warnings
+    warnings.filterwarnings("ignore", message="No runtime found")
+    import review
+    ok = lambda name, cond: None if cond else fails.append(f"[decisions list] {name}")
+    review.set_pid_info(pd.DataFrame({"pid": ["FM1", "FM2"], "assigned_list": ["12Nov-D4", None],
+                                      "call_order": [7.0, None]}))
+    r = review.with_list_info({"pid": " FM1 ", "sup_type": "assignment"})
+    ok("list and order filled", r["assigned_list"] == "12Nov-D4" and r["call_order"] == "7")
+    ok("unknown pid left blank", review.with_list_info({"pid": "X"})["call_order"] == "")
+    ok("blank roster values stay blank", review.with_list_info({"pid": "FM2"})["assigned_list"] == "")
+    ok("columns at the end of the log",
+       review.COLUMNS[-2:] == ["assigned_list", "call_order"] and review.COLUMNS[8] == "assigned_to")
+    review.set_pid_info(pd.DataFrame({"pid": []}))
+
+
 def check_reopen(fails):
     """review.py: a validated (final) closure that is reopened goes back to its
     last open state, is listed as reactivated until the next call, and needs
@@ -551,6 +568,7 @@ def main():
     check_enumerator_names(fails)
     check_assignments(fails)
     check_reopen(fails)
+    check_decision_list_info(fails)
     check_attendance(fails)
     check_lists_due(fails)
     check_active_lists_and_done(fails)

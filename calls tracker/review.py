@@ -38,10 +38,30 @@ import streamlit as st
 from rollup import status_for, _to_dt
 
 TAB = "decisions"
-# assigned_to was added for first assignments (assign.py). Older logs have no
-# such column: the header is extended on the next save, and reading pads it.
+# assigned_to was added for first assignments (assign.py), then assigned_list
+# and call_order (the pid's call list and its place in it, filled in on every
+# save from the roster). Older logs lack them: the header is extended on the
+# next save, and reading pads it.
 COLUMNS = ["sup_time", "sup_by", "pid", "sup_type", "sup_action",
-           "sup_callcode", "sup_comment", "sup_ref_key", "assigned_to"]
+           "sup_callcode", "sup_comment", "sup_ref_key", "assigned_to",
+           "assigned_list", "call_order"]
+
+# pid -> (assigned_list, call_order), set by the app from the roster so every
+# saved row carries them without each form having to pass them.
+_PID_INFO = {}
+
+
+def set_pid_info(roster):
+    """Remember each pid's call list and call order (see append_decisions)."""
+    global _PID_INFO
+    if roster is None or "pid" not in roster.columns:
+        return
+    def txt(v):
+        t = "" if pd.isna(v) else str(v).strip()
+        return t[:-2] if t.endswith(".0") else ("" if t.lower() == "nan" else t)
+    lst = roster["assigned_list"] if "assigned_list" in roster.columns else pd.Series("", index=roster.index)
+    order = roster["call_order"] if "call_order" in roster.columns else pd.Series("", index=roster.index)
+    _PID_INFO = {str(p).strip(): (txt(a), txt(o)) for p, a, o in zip(roster["pid"], lst, order)}
 
 TYPES = {"validation": {"confirmed", "corrected", "sent_back"},
          # reopened = any closed case put back to work by the supervisor
@@ -207,6 +227,18 @@ def now_text():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def with_list_info(row):
+    """The row with assigned_list and call_order filled from the roster, when
+    the caller did not give them."""
+    a, o = _PID_INFO.get(str(row.get("pid", "")).strip(), ("", ""))
+    out = dict(row)
+    if not str(out.get("assigned_list", "")).strip():
+        out["assigned_list"] = a
+    if not str(out.get("call_order", "")).strip():
+        out["call_order"] = o
+    return out
+
+
 def append_decisions(rows):
     """Append rows (list of dicts) to the log. Raises on failure, so the caller
     can show the error; one append call, so a save is all-or-nothing."""
@@ -218,6 +250,7 @@ def append_decisions(rows):
             raise ValueError(f"unknown action {r.get('sup_type')}/{r.get('sup_action')}")
         if not str(r.get("pid", "")).strip():
             raise ValueError("a decision without a pid")
+    rows = [with_list_info(r) for r in rows]
     ws = _worksheet(create=True)
     # An older log lacks the newer columns: widen the grid (it was created
     # exactly as wide as the old header) and extend the header first.

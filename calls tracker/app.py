@@ -562,6 +562,7 @@ n_full = len(summary)
 # is a data-entry contradiction. Zero on the 2026-08 sheet; surfaced, not hidden.
 n_conflict = int((_roster & (summary["eligible_to_call"] == 0)).sum())
 summary_full = summary          # pre-filter frame, for the diagnostics panel
+review.set_pid_info(summary_full)   # decisions rows carry list + call order
 summary = summary[_roster].copy()
 _roster_pids = set(summary["pid"])
 n_offroster_cases = int((~cases["pid"].isin(_roster_pids)).sum())
