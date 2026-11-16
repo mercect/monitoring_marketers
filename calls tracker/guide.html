@@ -400,6 +400,17 @@ footer { color: var(--muted); font-size: 13px; }
         </tbody>
       </table></div>
 
+      <h3>📄 Everything else</h3>
+      <p>The last button, outside <em>All</em>: every other pid that has been called, so any case can be edited. Newest activity first. <em>Where it is now</em> says which queue it is in, or whether it is completed or closed. Pids nobody has called yet are not listed (assign them instead).</p>
+      <div class="tablebox"><table>
+        <thead><tr><th>Case</th><th>What you can do</th></tr></thead>
+        <tbody>
+          <tr><td>Open, in another queue (⏰ follow up, 📵 keep calling)</td><td><strong>ACTIVE</strong>: an instruction for the enumerators; the pid appears in <em>To be revised</em> with your note. <strong>INACTIVE</strong>: close it with a <code>0_</code> code. Comment required.</td></tr>
+          <tr><td>✅ Completed</td><td>Stays INACTIVE. Choose a <code>0_</code> code to correct a complete that was not real (it beats the completion). Comment required.</td></tr>
+          <tr><td>🗄️ Closed (final)</td><td><strong>ACTIVE</strong>: reopen it, as in <em>Reopen a final closure</em>. <strong>INACTIVE</strong>: correct its code. Comment required.</td></tr>
+        </tbody>
+      </table></div>
+
       <h3>Reopen a final closure</h3>
       <p>For closures that are already final: validated by the Data Team, or closed by the Data Team. Closures not validated yet are not listed here; send those back from <em>To validate</em> with status ACTIVE. Completed interviews cannot be reopened. Choose the pid, write the reason (shown to the enumerators) and click <strong>Reopen</strong>. The case goes back to the state of its last open call and appears first in Active pids, under <em>To be revised — Data Team checked</em>. If it is closed again later, that closure needs validating again.</p>
 

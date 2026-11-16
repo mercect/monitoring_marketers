@@ -162,6 +162,7 @@ def render(summary, subs, open_cases, decisions, dmeta):
 
     keys = rv.status_keys(subs)
     todo = to_validate(summary, open_cases, decisions, keys)
+    others = everything_else(summary, open_cases, todo, keys, subs)
 
     # Any closed pid can be put back to work, except a completed interview.
     # Closures still waiting in To validate are left out: 'ACTIVE' there
@@ -178,7 +179,7 @@ def render(summary, subs, open_cases, decisions, dmeta):
                        horizontal=True, label_visibility="collapsed", key="review_section")
 
     if section.startswith("✔"):
-        _validate(todo, summary, subs, can_save)
+        _validate(todo, others, summary, subs, can_save)
     elif section.startswith("🔁"):
         _reopen(closed, summary, subs, keys, can_save)
     else:
@@ -233,20 +234,61 @@ def to_validate(summary, open_cases, decisions, keys):
     return out.drop(columns="_g").reset_index(drop=True)
 
 
-def _validate(todo, summary, subs, can_save):
-    if todo.empty:
-        st.info("Nothing to validate.")
-        return
+# Every other pid that has been called, so anything can be edited: open pids
+# in the other queues, completed interviews and final closures. Not part of
+# "All" (that stays the cases waiting for validation). Pids never called are
+# left out: a decision needs a call to attach to (rv.apply_decisions).
+OTHERS = "📄 Everything else"
+BUCKET_LABEL = {"Callback": "⏰ To be followed up", "Keep calling": "📵 To keep calling",
+                "Resume": "▶️ To be resumed", "Review": "🔎 To be reviewed"}
 
-    # Group filter, with how many are waiting in each.
+
+def everything_else(summary, open_cases, todo, keys, subs):
+    """One row per called pid not in `todo`, with `why` (where it sits now)
+    and `kind`: "open", "complete" (a completed interview) or "final" (a
+    closure already validated, or closed by the Data Team)."""
+    cols = LIST_COLS + ["kind", "ref_key"]
+    if subs.empty or "pid" not in subs.columns or summary.empty:
+        return pd.DataFrame(columns=cols)
+    called = set(subs["pid"].astype(str).str.strip())
+    skip = set(todo["pid"]) if "pid" in todo.columns else set()
+    s = summary[summary["pid"].isin(called) & ~summary["pid"].isin(skip)] \
+        .drop_duplicates("pid").copy()
+    if s.empty:
+        return pd.DataFrame(columns=cols)
+    bucket = open_cases.drop_duplicates("pid").set_index("pid")["action_bucket"] \
+        if "action_bucket" in open_cases.columns else pd.Series(dtype=str)
+    done = pd.to_numeric(s.get("is_complete", 0), errors="coerce").fillna(0) == 1
+    closed = s["current_status"].astype(str).str.upper().eq("INACTIVE")
+    s["kind"] = ["complete" if d else "final" if c else "open" for d, c in zip(done, closed)]
+    s["why"] = [("✅ Completed" if k == "complete" else "🗄️ Closed (final)" if k == "final"
+                 else BUCKET_LABEL.get(bucket.get(p, ""), "Open"))
+                for k, p in zip(s["kind"], s["pid"])]
+    s["callcode"] = s.get("current_callcode", "")
+    s["flag"] = ""
+    s["ref_key"] = s["pid"].map(keys).fillna("")
+    out = s[[c for c in cols if c in s.columns]].fillna("")
+    return out.sort_values("last_submission_time", ascending=False, kind="stable") \
+              .reset_index(drop=True)
+
+
+def _validate(todo, others, summary, subs, can_save):
+    # Group filter, with how many are waiting in each. Everything else is the
+    # last button, outside All.
     counts = {g: int(todo["why"].str.contains(g, regex=False).sum()) for g in GROUPS}
+    counts[OTHERS] = len(others)
     pick = st.segmented_control(
-        "Show", ["All"] + GROUPS, default="All", key="review_group",
+        "Show", ["All"] + GROUPS + [OTHERS], default="All", key="review_group",
         format_func=lambda g: f"All ({len(todo)})" if g == "All" else f"{g} ({counts[g]})",
         label_visibility="collapsed")
-    view = todo if pick in (None, "All") else todo[todo["why"].str.contains(pick, regex=False)]
+    if pick == OTHERS:
+        view = others
+        st.caption("Every other pid that has been called: open in another queue, "
+                   "completed, or already closed for good. Pick one to edit it.")
+    else:
+        view = todo if pick in (None, "All") else todo[todo["why"].str.contains(pick, regex=False)]
     if view.empty:
-        st.info("Nothing in this group.")
+        st.info("Nothing to validate." if pick in (None, "All") else "Nothing in this group.")
         return
     n_flag = int(view["flag"].ne("").sum())
     if n_flag:
@@ -273,11 +315,16 @@ def _validate(todo, summary, subs, can_save):
                           index=pids.index(clicked) if clicked in pids else 0)
     pid = labels[choice]
     rec = view[view["pid"] == pid].iloc[0]
-    st.markdown(f"**Why it needs validating:** {rec['why']}")
+    st.markdown(f"**{'Where it is now' if pick == OTHERS else 'Why it needs validating'}:** "
+                f"{rec['why']}")
     _case_facts(summary, subs, pid)
     _observations(subs, pid)
     if rec["kind"] == "closure":
         _closure_form(pid, rec, can_save)
+    elif rec["kind"] == "complete":
+        _complete_form(pid, rec, can_save)
+    elif rec["kind"] == "final":
+        _final_form(pid, rec, can_save)
     else:
         _open_form(pid, rec, can_save)
 
@@ -307,6 +354,52 @@ def _closure_form(pid, rec, can_save):
                  disabled=not can_save or not status or (need and not comment.strip())):
         _save([_entry(pid, "validation", act, "" if act == "sent_back" else code,
                       comment, rec["ref_key"])], f"{pid} ({status})")
+
+
+def _complete_form(pid, rec, can_save):
+    """A completed interview: it can only stay closed. Correct it to a 0_
+    code when it was not a real complete (the correction beats the
+    completion); a complete cannot be sent back to the call piles."""
+    st.caption("A completed interview stays INACTIVE. Change the code only if it was "
+               "not a real complete.")
+    code = st.selectbox("Closing code", ["1"] + list(rv.CLOSE_CODES), key=f"review_ccode_{pid}",
+                        format_func=lambda c: "1 — completed (keep)" if c == "1" else _code_label(c))
+    comment = st.text_area("Comment (required)", key=f"review_ccom_{pid}",
+                           placeholder="Why this was not a real complete.")
+    if st.button("💾 Save", key=f"review_csave_{pid}",
+                 disabled=not can_save or code == "1" or not comment.strip(),
+                 help="Choose a 0_ code to correct the complete. Keeping 1 needs no save."):
+        _save([_entry(pid, "validation", "corrected", code, comment, rec["ref_key"])],
+              f"{pid} (corrected to {code})")
+
+
+def _final_form(pid, rec, can_save):
+    """A closure that is already final: send it back to work (a reopen, as in
+    the Reopen section) or correct its code."""
+    current = str(rec["callcode"]).strip()
+    status = st.radio("Status after review", ["ACTIVE", "INACTIVE"], index=None,
+                      horizontal=True, key=f"review_fstatus_{pid}", format_func=_status_label)
+    code = ""
+    if status == "INACTIVE":
+        options = [current] + [c for c in rv.CLOSE_CODES if c != current]
+        code = st.selectbox("Closing code", options, key=f"review_fcode_{pid}",
+                            format_func=lambda c: _code_label(c)
+                            + (" (as it is now)" if c == current else ""))
+    comment = st.text_area(
+        "Comment (required" + (", shown to the enumerators)" if status == "ACTIVE" else ")"),
+        key=f"review_fcom_{pid}",
+        placeholder="What happened, and for ACTIVE what the enumerator should do now.")
+    same = status == "INACTIVE" and code == current
+    if same:
+        st.caption("Same code as now: nothing to change.")
+    if st.button("💾 Save", key=f"review_fsave_{pid}",
+                 disabled=not can_save or not status or same or not comment.strip()):
+        if status == "ACTIVE":
+            _save([_entry(pid, "decision", "reopened", "", comment, rec["ref_key"])],
+                  f"{pid} (reopened)")
+        else:
+            _save([_entry(pid, "validation", "corrected", code, comment, rec["ref_key"])],
+                  f"{pid} (corrected to {code})")
 
 
 def _open_form(pid, rec, can_save):

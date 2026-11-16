@@ -249,6 +249,31 @@ def check_reopen(fails):
     ok("keep trying adds no row", len(apply_decisions(o, k)) == 1)
     ok("keep trying is listed in To be revised", list(reactivated(k, o, now)["pid"]) == ["B"])
 
+    # 📄 Everything else in Supervisor review: every called pid not waiting
+    # for validation, by kind, and the corrections it can save.
+    import warnings
+    warnings.filterwarnings("ignore", message="No runtime found")
+    import review_tab as rt
+    from review import status_keys
+    ev = pd.DataFrame([sub("C", 1, "1", "c1"), sub("F", 1, "0_WN", "f1"),
+                       sub("O", 1, "2_NA", "o1"), sub("V", 1, "0_R", "v1")])
+    dv = dec([("2026-11-03 08:00:00", "S", "F", "validation", "confirmed", "0_WN", "", "f1")])
+    sv = summarize(frame_from_attempts(apply_decisions(ev, dv)), apply_decisions(ev, dv))
+    oc = pd.DataFrame({"pid": ["O"], "action_bucket": ["Keep calling"], "resume_queue": [0]})
+    todo = rt.to_validate(sv, oc, dv, status_keys(ev))
+    oth = rt.everything_else(sv, oc, todo, status_keys(ev), ev).set_index("pid")
+    ok = lambda name, cond: None if cond else fails.append(f"[everything else] {name}")
+    ok("unvalidated closure stays in To validate, not here",
+       list(todo["pid"]) == ["V"] and "V" not in oth.index)
+    ok("complete / final / open by kind",
+       oth.at["C", "kind"] == "complete" and oth.at["F", "kind"] == "final"
+       and oth.at["O", "kind"] == "open" and oth.at["O", "why"] == "📵 To keep calling")
+    fix = dec([("2026-11-03 08:00:00", "S", "C", "validation", "corrected", "0_IN", "wrong person", "c1"),
+               ("2026-11-03 09:00:00", "S", "F", "validation", "corrected", "0_IN", "other code", "f1")])
+    sf = summarize(frame_from_attempts(apply_decisions(ev, fix)), apply_decisions(ev, fix)).set_index("pid")
+    ok("a corrected complete takes the 0_ code", sf.at["C", "current_callcode"] == "0_IN")
+    ok("a corrected final closure takes the new code", sf.at["F", "current_callcode"] == "0_IN")
+
 
 def check_attendance(fails):
     """attendance.py: planned vs checked in vs the lists actually called."""
