@@ -206,6 +206,17 @@ def check_assignments(fails):
     ok("C called by someone else", list(c["other"]["pid"]) == ["C"])
     ok("D called without assignment, E (before go-live) not",
        list(c["unassigned"]["pid"]) == ["D"])
+    # F: closed by a supervisor with no call (Archived); G: typed " g " on the
+    # call form; H: not on the roster. None of them is waiting.
+    dec2 = pd.concat([dec, pd.DataFrame([row("2026-11-14 08:00:00", p, "Enum 1") for p in "FGH"])])
+    subs2 = pd.concat([subs, pd.DataFrame({"pid": [" g "], "endtime": ["2026-11-14T08:30:00.000Z"],
+                                           "enum_name": ["Enum 1"]})])
+    roster2 = pd.DataFrame({"pid": list("ABCDEFG"), "eligible_to_call": 1,
+                            "case_state": ["Active", "Not assigned", "Active", "Active", "Active",
+                                           "Archived", "Active"]})
+    c2 = assign.checks(roster2, subs2, assign.assignments(dec2), now=pd.Timestamp("2026-11-14 08:45"))
+    ok("only B waits: closed, typed-differently and off-roster pids do not",
+       list(c2["late"]["pid"]) == ["B"])
     # out of order: list 06/11 day 4, #1 waiting, ticking #3 skips it; #2 is assigned
     r = pd.DataFrame({"pid": ["p1", "p2", "p3"], "date_recruited": "06/11/2026",
                       "assigned_list": "4", "call_order": ["1", "2", "3"],

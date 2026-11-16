@@ -104,8 +104,23 @@ def checks(roster, subs, asg, now=None):
     empty = pd.DataFrame()
     if asg.empty:
         return {"late": empty, "unassigned": empty, "other": empty}
-    m = asg.merge(fc, on="pid", how="left")
-    waiting = m[m["first_call_at"].isna()].copy()
+    key = lambda s: s.astype(str).str.strip().str.upper()
+    fc = fc.assign(_k=key(fc["pid"]))
+    m = asg.assign(_k=key(asg["pid"])).merge(fc.drop(columns="pid"), on="_k", how="left")
+    # Still waiting = never called AND nothing else happened to it: a pid with
+    # any submission (a supervisor closure, a notification form, a call typed
+    # with the pid in another case) is no longer "Not assigned" in the roster,
+    # and a pid not on the roster or not eligible to call was never callable.
+    still = pd.Series(True, index=m.index)
+    if "case_state" in roster.columns:
+        fresh = roster["case_state"].astype(str) == "Not assigned"
+        if "eligible_to_call" in roster.columns:
+            fresh &= pd.to_numeric(roster["eligible_to_call"], errors="coerce").fillna(0) == 1
+        still = m["_k"].isin(set(key(roster.loc[fresh, "pid"])))
+    else:
+        still = m["_k"].isin(set(key(roster["pid"])))
+    m = m.drop(columns="_k")
+    waiting = m[m["first_call_at"].isna() & still].copy()
     waiting["minutes"] = ((now - pd.to_datetime(waiting["assigned_at"])).dt.total_seconds() // 60)
     late = waiting[waiting["minutes"] > LATE_MINUTES]
     called = m[m["first_call_at"].notna()]

@@ -725,6 +725,12 @@ with tab_summary:
     _skipped = skipped_in_order(summary, handed=_handed)
     n_skipped = int(summary_view["pid"].isin(_skipped.index).sum())
 
+    # same pids as 📨 Assigned, not called yet in ✅ Active pids (sidebar lists)
+    _late_asg = _asg_checks.get("late", pd.DataFrame())
+    if len(_late_asg) and base_pids is not None:
+        _late_asg = _late_asg[_late_asg["pid"].isin(base_pids)]
+    n_asg_late = len(_late_asg)
+
     def _category(title, total_n, items, where):
         category_row(title, total_n, where, items)
 
@@ -739,7 +745,7 @@ with tab_summary:
     _category("🆕 To assign", n_due,
               _due_tiles
               + [(n_skipped, "skipped in list order", RED, "assign now"),
-                 (len(_asg_checks["late"]), f"assigned, not called in {assign.LATE_MINUTES} min",
+                 (n_asg_late, f"assigned, not called in {assign.LATE_MINUTES} min",
                   RED, "📨 Assigned, not called yet")], "🆕 To be assigned")
     _category("📵 Keep trying", n_keep + n_review,
               [(n_keep, "to keep calling", BLUE),
