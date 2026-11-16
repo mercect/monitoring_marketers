@@ -41,6 +41,7 @@ from calllist import (active_lists, assigned_list_number, first_call_date, lists
                       with_list_order)
 import review
 import review_tab
+from form_labels import completion_duration, label_answers
 
 st.set_page_config(page_title="Call-Tracking Monitor Dashboard", page_icon="📞", layout="wide")
 
@@ -1330,7 +1331,7 @@ with tab_partial:
                              "last_section", "total_attempts", "days_open",
                              "route_recruited", "last_comment"]
                  if c in ps.columns]
-        ch.dataframe(ps[pcols].sort_values(["tab_id", "last_submission_time"],
+        ch.dataframe(label_answers(ps[pcols]).sort_values(["tab_id", "last_submission_time"],
                                            ascending=[True, False]),
                      width="stretch", hide_index=True)
 
@@ -1436,12 +1437,14 @@ with tab_archive:
                 continue
             # ✅ Completed: the interview and its quality, one row per pid
             _done_cols = ["pid", "assigned_list", "enumerator", "last_submission_time",
-                          "was_partialsaved", "total_attempts", "numbers_wrong",
+                          "duration_min", "was_partialsaved", "total_attempts", "numbers_wrong",
                           "times_rescheduled", "times_dropped", "times_noanswer", "times_off",
                           "topup_amount", "topup_mobile_lab", "last_comment"] + QC_FIELDS + END_FIELDS
             _c = (_g[["pid"]]
                   .merge(summary.drop_duplicates("pid"), on="pid", how="left", suffixes=("", "_s"))
-                  .merge(_answers, on="pid", how="left"))
+                  .merge(_answers, on="pid", how="left")
+                  .merge(completion_duration(subs), on="pid", how="left"))
+            _c = label_answers(_c)
             ch.dataframe(yesno(_c[[c for c in _done_cols if c in _c.columns]]),
                          width="stretch", hide_index=True)
 
@@ -1457,7 +1460,7 @@ with tab_archive:
                             "current_status", "current_callcode", "last_section_n", "last_section",
                             "stop_reason", "topup_amount", "topup_mobile_lab"] + QC_FIELDS + END_FIELDS
                 _p = _ps.drop(columns=[c for c in ("stop_reason",) if c in _ps.columns])                         .merge(_answers, on="pid", how="left")
-                ch.dataframe(yesno(_p[[c for c in _ps_cols if c in _p.columns]]
+                ch.dataframe(yesno(label_answers(_p[[c for c in _ps_cols if c in _p.columns]])
                                    .sort_values("last_submission_time", ascending=False)),
                              width="stretch", hide_index=True)
 

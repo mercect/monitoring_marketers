@@ -243,6 +243,29 @@ def check_decision_list_info(fails):
     review.set_pid_info(pd.DataFrame({"pid": []}))
 
 
+def check_form_labels(fails):
+    """form_labels.py: coded answers shown as labels; completing interview length."""
+    from form_labels import label_answers, completion_duration
+    ok = lambda name, cond: None if cond else fails.append(f"[form labels] {name}")
+    d = label_answers(pd.DataFrame({"qc3_underst": ["2", "2.0", "", "9"],
+                                    "qc6_difficult": ["2 3", "-55", "1", None],
+                                    "partial_end_survey": ["1", "0", "2", ""]}))
+    ok("single choice labelled", list(d["qc3_underst"]) == ["Good", "Good", "", "9"])
+    ok("multiple choice labelled", d["qc6_difficult"].iloc[0] == "Noise · Network"
+       and d["qc6_difficult"].iloc[1] == "Other, specify" and d["qc6_difficult"].iloc[3] == "")
+    ok("partial_end_survey labelled", d["partial_end_survey"].iloc[2].startswith("Completed ONLY"))
+    subs = pd.DataFrame({
+        "pid": ["A", "A", "B", "C"], "callcode": ["3_D", "1", "1", "2_NA"],
+        "survey_type": "Long Survey", "duration": ["300", "1530", "", "40"],
+        "starttime": ["2026-11-16T08:00:00.000Z"] * 2 + ["2026-11-16T09:00:00.000Z", ""],
+        "endtime": ["2026-11-16T08:05:00.000Z", "2026-11-16T08:30:00.000Z",
+                    "2026-11-16T09:20:00.000Z", ""]})
+    dur = completion_duration(subs).set_index("pid")["duration_min"]
+    ok("duration of the completing form, in minutes", dur["A"] == 25.5)
+    ok("blank duration: end - start", dur["B"] == 20.0)
+    ok("no complete, no duration", "C" not in dur.index)
+
+
 def check_reopen(fails):
     """review.py: a validated (final) closure that is reopened goes back to its
     last open state, is listed as reactivated until the next call, and needs
@@ -569,6 +592,7 @@ def main():
     check_assignments(fails)
     check_reopen(fails)
     check_decision_list_info(fails)
+    check_form_labels(fails)
     check_attendance(fails)
     check_lists_due(fails)
     check_active_lists_and_done(fails)
