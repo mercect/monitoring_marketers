@@ -450,6 +450,44 @@ def actioned(decisions, react):
     d = d.sort_values("_t").drop_duplicates("pid", keep="last")
     return {p: (b, t) for p, b, t in zip(d["pid"], d["sup_by"], d["_t"])}
 
+
+def called_before_done(decisions, subs):
+    """Cases the Data Team sent back (sent_back / reopened / keep_trying) that
+    an enumerator called BEFORE the supervisor ticked ✔ done in To be revised:
+    the call went ahead without the supervisor confirming the note was acted
+    on. A call after the tick is normal work and is not listed. One row per
+    pid (its newest send-back): pid, reactivated_at, supervisor_note,
+    called_at, called_by, done_at (blank when never ticked)."""
+    cols = ["pid", "reactivated_at", "supervisor_note", "called_at", "called_by", "done_at"]
+    if decisions is None or decisions.empty or subs is None or subs.empty:
+        return pd.DataFrame(columns=cols)
+    lp = latest_per_pid(decisions[~decisions["sup_type"].isin(PAPERWORK)])
+    lp = lp[lp["sup_action"].isin(REACTIVATE)].copy()
+    if lp.empty:
+        return pd.DataFrame(columns=cols)
+    lp["sent_at"] = pd.to_datetime(lp["sup_time"], errors="coerce")
+    calls = subs[~_is_sup(subs)].copy()
+    calls["_t"] = pd.to_datetime(calls.get("endtime", pd.Series("", index=calls.index)),
+                                 errors="coerce", utc=True, format="ISO8601").dt.tz_localize(None)
+    calls["pid"] = calls["pid"].astype(str).str.strip()
+    ticks = decisions[decisions["sup_type"] == "followup"].copy()
+    ticks["_t"] = pd.to_datetime(ticks["sup_time"], errors="coerce")
+    rows = []
+    for r in lp.itertuples(index=False):
+        after = calls[(calls["pid"] == r.pid) & (calls["_t"] >= r.sent_at)].sort_values("_t")
+        if after.empty:
+            continue
+        first = after.iloc[0]
+        done = ticks[(ticks["pid"] == r.pid) & (ticks["_t"] >= r.sent_at)]["_t"].min()
+        if pd.notna(done) and done <= first["_t"]:
+            continue
+        rows.append({"pid": r.pid, "reactivated_at": f"{r.sent_at:%Y-%m-%d %H:%M}",
+                     "supervisor_note": r.sup_comment,
+                     "called_at": f"{first['_t']:%Y-%m-%d %H:%M}",
+                     "called_by": str(first.get("enum_name", "")),
+                     "done_at": f"{done:%Y-%m-%d %H:%M}" if pd.notna(done) else ""})
+    return pd.DataFrame(rows, columns=cols)
+
 def reactivated(decisions, subs, now):
     """Pids put back to work (sent back or reopened) that nobody has called
     since: pid, reactivated_at, reactivated_by, supervisor_note, minutes. Only

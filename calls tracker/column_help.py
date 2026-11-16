@@ -56,7 +56,7 @@ HELP = {
     # partial saves
     "active_partialsave": "Is a half-finished interview still held on a tablet?",
     "was_partialsaved": "Was this pid ever partial-saved (history)?",
-    "tab_id": "Tablet holding the partial save (as typed by the enumerator).",
+    "tab_id": "Tablet holding the partial save (rs_tab, or rs_tab_oth when typed as other).",
     "last_section": "How far the interview got.",
     # assigning
     "skipped": "Never called although its call list has moved more than one round past it.",
@@ -68,6 +68,8 @@ HELP = {
     "assigned_at": "When it was assigned.",
     "minutes_waiting": "Minutes since it was assigned (or reactivated) without a call. For assignments, red after 30.",
     "reactivated_at": "When the supervisor sent the case back or reopened it.",
+    "called_at": "First call after the case was sent back.",
+    "done_at": "When the supervisor ticked done in To be revised (blank = never).",
     "reactivated_by": "Supervisor who sent the case back or reopened it.",
     "reason": "Reason given for assigning out of order.",
     "called_by": "Who made the first call.",

@@ -388,6 +388,22 @@ def check_active_lists_and_done(fails):
                ("2026-11-04 08:00:00", "S", "A", "decision", "reopened", "", "again", "a1")])
     ok("a tick from before a later reopen does not count",
        actioned(old, reactivated(old, subs, now)) == {})
+    # called before / after the tick
+    from review import called_before_done
+    sb = ("2026-11-04 08:00:00", "S", "A", "validation", "sent_back", "", "check number", "a1")
+    tick = ("2026-11-04 09:00:00", "Sup", "A", "followup", "actioned", "", "", "")
+    call_at = lambda h: pd.DataFrame([dict(pid="A", endtime=f"2026-11-04T{h}:30:00.000Z", callcode="2_NA",
+                                           KEY=f"c{h}", enum_name="E", survey_type="Long Survey")])
+    both = lambda h: pd.concat([subs, call_at(h)], ignore_index=True)
+    ok("called before the tick is flagged", list(called_before_done(dec([sb, tick]), both("08"))["pid"]) == ["A"])
+    ok("called after the tick is not", called_before_done(dec([sb, tick]), both("10")).empty)
+    ok("called and never ticked is flagged", list(called_before_done(dec([sb]), both("10"))["pid"]) == ["A"])
+    ok("not called yet is not flagged", called_before_done(dec([sb]), subs).empty)
+    # the tablet holding a partial save: rs_tab_oth, else rs_tab, else rs_tab_id
+    from data_io import tablet_column
+    t = tablet_column(pd.DataFrame({"rs_tab": ["Tab 1", "other", ""], "rs_tab_oth": ["", "Moto 8", ""],
+                                    "rs_tab_id": ["", "", "old 3"]}))
+    ok("tablet from rs_tab / rs_tab_oth / rs_tab_id", list(t["rs_tab_id"]) == ["Tab 1", "Moto 8", "old 3"])
 
 
 def check_baseline(s, fails):

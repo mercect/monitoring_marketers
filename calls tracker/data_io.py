@@ -124,6 +124,23 @@ def rename_list_columns(df):
            if old in df.columns and new not in df.columns}
     return df.rename(columns=ren) if ren else df
 
+
+def tablet_column(df):
+    """The tablet holding a partial save. The form now asks it as rs_tab (the
+    tablet chosen from the list) and rs_tab_oth (typed when it is not on the
+    list); older submissions used rs_tab_id. All three meet in rs_tab_id, the
+    column the rollup reads: rs_tab_oth when filled, else rs_tab, else the old
+    rs_tab_id."""
+    if "rs_tab" not in df.columns and "rs_tab_oth" not in df.columns:
+        return df
+    out = df.copy()
+    blank = pd.Series("", index=out.index)
+    oth = out.get("rs_tab_oth", blank).fillna("").astype(str).str.strip()
+    pick = out.get("rs_tab", blank).fillna("").astype(str).str.strip()
+    old = out.get("rs_tab_id", blank).fillna("").astype(str).str.strip()
+    out["rs_tab_id"] = oth.where(oth != "", pick.where(pick != "", old))
+    return out
+
 @st.cache_data(ttl=REFRESH_SECONDS)
 def load_submissions():
     """Read the raw submission export (Kobo) from the sheet link, or the sample."""
@@ -134,6 +151,7 @@ def load_submissions():
     if not url:
         url, tab, gid, origin = "../sample_database.csv", "sample_database.csv", "", "demo file"
     df = _read_sheet(url, "sheet_csv_url", tab, gid)
+    df = tablet_column(df)
     # test submissions are not observations - drop before anything counts them
     df, n_test = drop_test_attempts(df)
     return df, {"origin": origin, "tab": tab, "gid": gid, "rows": len(df),

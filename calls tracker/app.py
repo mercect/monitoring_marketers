@@ -755,14 +755,20 @@ with tab_summary:
     _sent_back = review.reactivated(decisions, subs, assign.utc_now())
     _sent_back = _sent_back[_sent_back["pid"].isin(open_with_buckets(cases_roster, summary)["pid"])]
     _sent_back = _sent_back[~_sent_back["pid"].isin(review.actioned(decisions, _sent_back))]
+    # A sent-back case called BEFORE its supervisor ticked ✔ done in To be
+    # revised: the call went ahead without the note being confirmed. After the
+    # tick, calls are normal work and are not flagged.
+    _early = review.called_before_done(decisions, subs)
     _fix = [(len(_sent_back), "sent back by the Data Team to revise", RED,
              "call first · 🔁 To be revised"),
             (len(_rc), "called again after completing", RED, "table below"),
             (len(_ac), "called after a supervisor closed them", RED, "table below"),
             (len(_asg_checks["unassigned"]), "called without being assigned", ORANGE,
              "table below"),
-            (len(_asg_checks["other"]), "called by someone other than assigned", ORANGE,
-             "table below")]
+            (len(_early), "called before the supervisor ticked ✔ done", ORANGE,
+             "sent back · table below")]
+    # (Who makes a call does not matter: a pid first called by someone other
+    # than the enumerator it was assigned to is not flagged.)
     st.divider()
     if any(f[0] for f in _fix):
         st.subheader("⚠️ To fix")
@@ -782,19 +788,14 @@ with tab_summary:
                                       "last_submission_time"] if c in _ac.columns]],
                      width="stretch", hide_index=True)
 
+    if len(_early):
+        st.markdown(f"**Called before the supervisor ticked ✔ done ({len(_early)})**")
+        ch.dataframe(_early, width="stretch", hide_index=True)
     _un = _asg_checks["unassigned"]
     if len(_un):
         st.markdown(f"**Called without being assigned ({len(_un)})**")
         _u = _un.assign(first_call_at=pd.to_datetime(_un["first_call_at"]).dt.strftime("%d %b %H:%M"))
         ch.dataframe(_u.rename(columns={"first_caller": "called_by"}), width="stretch",
-                     hide_index=True)
-    _ot = _asg_checks["other"]
-    if len(_ot):
-        st.markdown(f"**Called by someone other than assigned ({len(_ot)})**")
-        _o = _ot.assign(first_call_at=pd.to_datetime(_ot["first_call_at"]).dt.strftime("%d %b %H:%M"),
-                        assigned_at=pd.to_datetime(_ot["assigned_at"]).dt.strftime("%d %b %H:%M"))
-        ch.dataframe(_o[["pid", "assigned_to", "first_caller", "assigned_at", "first_call_at"]]
-                     .rename(columns={"first_caller": "called_by"}), width="stretch",
                      hide_index=True)
 
     # ---- 3. PROGRESS: per call list, overall and today -------------------------
