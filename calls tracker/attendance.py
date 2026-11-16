@@ -2,9 +2,14 @@
 # -----------------------------------------------------------------------------
 # A separate Google Sheet (its id in Secrets as `checkin_sheet_id`) has two tabs:
 #
-#   data      the SurveyCTO start/end-of-day form: one row per check-in, with
-#             `today` (date), `enum_name`, `sod_arrival_hhmm` (arrival),
-#             `sod_shift_lab` (shift), `sod_late_min` / `sod_late`, `eod_time`.
+#   data      the SurveyCTO start/end-of-day form (start_end_day_nov2026): one
+#             row per submission, start or end of day (`form_part`). Read:
+#             date `today` (else today_temp / starttime / SubmissionDate);
+#             name `enum_name` (else enum_oth, else supervisor_name); arrival
+#             `sod_arrival_hhmm` (else sod_arrival / sod_time / starttime);
+#             `sod_shift_lab`, `sod_late_min` / `sod_late` / `sod_late_reason`,
+#             `tablet_name`, `sod_topup`; end of day `eod_time`,
+#             `eod_device_status_lab`, `eod_topup_status`, `eod_balance`.
 #   schedule  the plan: date | enumerator | team | shift_start | shift_end | list
 #             (one row per person per working day; list as in assigned_list,
 #             e.g. "12Nov-D4").
@@ -113,38 +118,115 @@ def clean_schedule(raw, amap):
     return out[cols].reset_index(drop=True)
 
 
+_BLANK = {"", "nan", "none", "null", "."}
+_OTHER = {"other", "others", "oth", "-96", "96", "-77", "77"}
+
+
+def _hhmm(series):
+    """'07:32', '7:32:10 AM', '2026-11-16T07:32:00.000Z' or 'Nov 16, 2026
+    7:32:10 AM' -> '07:32'. Blank stays blank."""
+    s = pd.Series(series).astype(str).str.strip()
+    out = pd.Series("", index=s.index)
+    keep = ~s.str.lower().isin(_BLANK)
+    t = pd.to_datetime(s[keep], errors="coerce", format="ISO8601")
+    rest = t.isna()
+    if rest.any():
+        t2 = pd.to_datetime(s[keep][rest], errors="coerce", format="mixed")
+        t = t.where(~rest, t2)
+    out[keep] = t.dt.strftime("%H:%M").fillna("")
+    # A bare '7:32' that pandas could not read: keep the hour and minutes.
+    bare = keep & (out == "") & s.str.match(r"^\d{1,2}:\d{2}")
+    if bare.any():
+        m = s[bare].str.extract(r"^(\d{1,2}):(\d{2})")
+        out[bare] = m[0].str.zfill(2) + ":" + m[1]
+    return out
+
+
+def _first(*series):
+    """Per row, the first non-blank value of the given text columns."""
+    out = pd.Series("", index=series[0].index)
+    for s in series:
+        s = s.astype(str).str.strip()
+        out = out.where(~out.str.lower().isin(_BLANK), s)
+    return out.where(~out.str.lower().isin(_BLANK), "")
+
+
 def clean_checkins(raw, amap):
     """One row per enumerator per day: the first start-of-day check-in, plus
-    the end-of-day time if they filled it."""
-    cols = ["date", "enumerator", "arrived", "late_min", "late", "late_reason", "left", "shift_form"]
+    the end-of-day form (the last one) if they filled it.
+
+    Works on the start_end_day_nov2026 form and older versions. Each field
+    falls back to a neighbour when it is blank, so one empty calculate on the
+    form does not drop a person who did check in:
+      name     enum_name, else enum_oth (an "Other" name), else supervisor_name
+      date     today, else today_temp, starttime, SubmissionDate
+      arrival  sod_arrival_hhmm, else sod_arrival, sod_time, then the form's
+               starttime when the row is a start-of-day form
+    A row is a start-of-day check-in when it has an arrival or a sod_ answer,
+    or when form_part says start; end of day when eod_time or any eod_ answer
+    is filled, or form_part says end."""
+    cols = ["date", "enumerator", "arrived", "late_min", "late", "late_reason", "left",
+            "shift_form", "tablet", "topup", "device_end", "topup_end", "balance_end"]
     if raw is None or raw.empty:
         return pd.DataFrame(columns=cols)
     r = raw.copy()
     get = lambda c: r[c].astype(str).str.strip() if c in r.columns else pd.Series("", index=r.index)
-    date = _day(get("today"))
-    fallback = _day(get("starttime"))
-    date = pd.Series(date, index=r.index).where(pd.Series(date, index=r.index).notna(), fallback)
+    blank = lambda s: s.str.lower().isin(_BLANK)
+
+    date = pd.Series(pd.NaT, index=r.index, dtype=object)
+    for c in ("today", "today_temp", "starttime", "SubmissionDate"):
+        date = date.where(date.notna(), pd.Series(_day(get(c)), index=r.index))
+
+    name = get("enum_name")
+    other = blank(name) | name.str.lower().isin(_OTHER)
+    name = name.where(~other, _first(get("enum_oth"), get("supervisor_name")))
+
+    part = get("form_part").str.lower()
+    says_start = part.str.contains(r"start|sod|begin|morning", regex=True)
+    says_end = part.str.contains(r"end|eod|evening|close", regex=True) & ~says_start
+    sod_any = pd.Series(False, index=r.index)
+    for c in ("sod_shift", "sod_arrival", "sod_arrival_hhmm", "sod_time", "sod_topup", "sod_late"):
+        sod_any |= ~blank(get(c))
+    eod_any = pd.Series(False, index=r.index)
+    for c in ("eod_time", "eod_topup_status", "eod_device_status", "eod_balance", "eod_comments"):
+        eod_any |= ~blank(get(c))
+    is_start = says_start | (sod_any & ~says_end)
+    is_end = says_end | eod_any
+
+    arrived = _first(_hhmm(get("sod_arrival_hhmm")), _hhmm(get("sod_arrival")),
+                     _hhmm(get("sod_time")))
+    arrived = arrived.where((arrived != "") | ~is_start, _hhmm(get("starttime")))
+    left = _first(_hhmm(get("eod_time")), _hhmm(get("endtime")).where(is_end, ""))
+
+    t = pd.to_datetime(get("starttime"), errors="coerce", format="mixed", utc=True)
     df = pd.DataFrame({
         "date": date.values,
-        "enumerator": enumerators.canonical(get("enum_name"), amap).values,
-        "arrived": get("sod_arrival_hhmm").values,
+        "enumerator": enumerators.canonical(name, amap).values,
+        "arrived": arrived.where(is_start, "").values,
         "late_min": pd.to_numeric(get("sod_late_min"), errors="coerce").values,
         "late": get("sod_late").values,
         "late_reason": get("sod_late_reason").values,
-        "left": get("eod_time").values,
-        "shift_form": get("sod_shift_lab").values,
-        "_t": get("starttime").values,
+        "left": left.where(is_end, "").values,
+        "shift_form": _first(get("sod_shift_lab"), get("sod_shift")).values,
+        "tablet": _first(get("tablet_name"), get("tablet_oth"), get("tablet")).values,
+        "topup": get("sod_topup").values,
+        "device_end": _first(get("eod_device_status_lab"), get("eod_device_status")).values,
+        "topup_end": _first(get("eod_topup_status"), get("eod_topup_amt")).values,
+        "balance_end": get("eod_balance").values,
+        "_t": t.values,
     })
     df = df[df["date"].notna() & (df["enumerator"] != "")]
-    start = df[df["arrived"] != ""].sort_values("_t").drop_duplicates(["date", "enumerator"])
+    start_cols = [c for c in df.columns if c not in ("left", "device_end", "topup_end", "balance_end")]
+    start = df[df["arrived"] != ""].sort_values("_t").drop_duplicates(["date", "enumerator"])[start_cols]
     end = df[df["left"] != ""].sort_values("_t").drop_duplicates(["date", "enumerator"], keep="last")
-    out = start.drop(columns=["left"]).merge(end[["date", "enumerator", "left"]],
-                                             on=["date", "enumerator"], how="outer")
+    out = start.merge(end[["date", "enumerator", "left", "device_end", "topup_end", "balance_end"]],
+                      on=["date", "enumerator"], how="outer")
     for c in cols:
         if c not in out.columns:
             out[c] = ""
-    for c in ("arrived", "late", "late_reason", "left", "shift_form"):
-        out[c] = out[c].fillna("")
+    for c in cols[2:]:
+        if c != "late_min":
+            out[c] = out[c].fillna("").astype(str).replace({"nan": ""})
     return out[cols].reset_index(drop=True)
 
 
@@ -185,6 +267,7 @@ def day_table(day, schedule, checkins, calls, known=None):
         s = sch_i.loc[n] if planned else None
         c = chk_i.loc[n] if n in chk_i.index else None
         left = c["left"] if c is not None else ""
+        d = c                             # the end-of-day form, if any
         if c is not None and not str(c["arrived"]).strip():
             c = None                      # only an end-of-day form: no check-in
         mine = calls[calls["enumerator"] == n]
@@ -213,7 +296,10 @@ def day_table(day, schedule, checkins, calls, known=None):
             "checked_in": "✅" if c is not None else "—",
             "arrived": c["arrived"] if c is not None else "",
             "late_min": late,
+            "tablet": c["tablet"] if c is not None else "",
+            "topup": c["topup"] if c is not None else "",
             "left": left,
+            "device_end": d["device_end"] if d is not None else "",
             "calls": len(mine),
             "on_list": on,
             "other_list": len(other) if planned else len(mine),
@@ -221,7 +307,8 @@ def day_table(day, schedule, checkins, calls, known=None):
             "flag": " · ".join(flags),
         })
     out = pd.DataFrame(rows, columns=["enumerator", "team", "planned_list", "shift", "checked_in",
-                                      "arrived", "late_min", "left", "calls", "on_list",
+                                      "arrived", "late_min", "tablet", "topup", "left",
+                                      "device_end", "calls", "on_list",
                                       "other_list", "other_lists", "flag"])
     order = out["flag"].map(lambda f: 0 if "🔴" in f else 1 if "🟠" in f else 2 if f else 3)
     return out.assign(_o=order).sort_values(["_o", "team", "enumerator"]).drop(columns="_o") \

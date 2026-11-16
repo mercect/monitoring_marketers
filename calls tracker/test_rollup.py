@@ -296,6 +296,26 @@ def check_attendance(fails):
     ok("assignment groups by shift and list", len(a) == 3 and set(d4["checked_in"]) == {"1/1"})
     ok("assignment marks who is off-list", "🟠 Salieu Nabay" in " ".join(a["people"]))
 
+    # start_end_day_nov2026 as SurveyCTO writes it to the Sheet: blank
+    # calculates must not drop a check-in.
+    new = at.clean_checkins(pd.DataFrame({
+        "starttime": ["Nov 16, 2026 7:32:10 AM", "Nov 16, 2026 7:48:00 AM", "Nov 16, 2026 7:59:00 AM",
+                      "Nov 16, 2026 2:01:00 PM", "Nov 16, 2026 10:12:00 AM"],
+        "today": ["Nov 16, 2026", "", "Nov 16, 2026", "Nov 16, 2026", "Nov 16, 2026"],
+        "form_part": ["start", "start", "start", "end", "start"],
+        "enum_name": ["Ann B", "Cy D", "Other", "Ann B", "Ann B"],
+        "enum_oth": ["", "", "Di E", "", ""],
+        "sod_arrival": ["7:30:00 AM", "", "7:58:00 AM", "", "10:10:00 AM"],
+        "sod_arrival_hhmm": ["07:30", "", "", "", ""],
+        "tablet_name": ["T03", "T07", "T11", "", "T03"],
+        "eod_time": ["", "", "", "2:00 PM", ""]}), amap).set_index("enumerator")
+    ok("new form: blank date and arrival fall back to starttime",
+       new.at["Cy D", "arrived"] == "07:48" and new.at["Cy D", "date"] == day)
+    ok("new form: an Other name is read from enum_oth", new.at["Di E", "arrived"] == "07:58")
+    ok("new form: first arrival kept, end of day joined",
+       new.at["Ann B", "arrived"] == "07:30" and new.at["Ann B", "left"] == "14:00")
+    ok("new form: tablet read", new.at["Cy D", "tablet"] == "T07")
+
 
 def check_lists_due(fails):
     """calllist.py: which list is due on which day, and how many are left."""
