@@ -28,7 +28,7 @@ import streamlit.components.v1 as components
 
 from auth import require_password
 from data_io import (load_all, route_column, parse_dates,
-                     REFRESH_SECONDS, code_stamp, EXPECTED_SAMPLE_TAB)
+                     REFRESH_SECONDS, code_stamp, EXPECTED_SAMPLE_TAB, topups_by_pid)
 from rollup import (OPEN_STATUSES, summary_kpis,
                     eligible_roster, recruit_exclusions,
                     CC_CALLBACK, CC_KEEP_CALLING, CC_RESUME,
@@ -1271,8 +1271,19 @@ with tab_partial:
         n_pids = len(ps)
         n_tabs = int(ps["tab_id"].nunique())
         n_lost = int((ps["tab_id"] == NO_TAB).sum())
+        # Top-ups already paid on each pid (partial, resume log or complete),
+        # so nobody pays twice or forgets the one still owed.
+        _tp = topups_by_pid(subs)
+        ps = ps.drop(columns=[c for c in _tp.columns if c != "pid" and c in ps.columns]) \
+               .merge(_tp, on="pid", how="left")
+        ps["topup_received"] = ps["topup_received"].fillna("No")
+        ps["topups"] = ps["topups"].fillna("")
+        ps["partial_end_survey"] = ps["partial_end_survey"].fillna("")
+        n_paid = int((ps["topup_received"] == "Yes").sum())
         flag_tiles([(n_pids, "held now", BLUE), (n_tabs, "tablets holding them", BLUE),
-                    (n_lost, "no tablet id", RED)])
+                    (n_lost, "no tablet id", RED),
+                    (n_paid, "already received a top-up", BLUE),
+                    (n_pids - n_paid, "no top-up yet", GREY)])
 
         # A tablet id that is really a callcode or the pid itself. `rs_tab_id` is a
         # free-text box sitting between two coded questions on the 4_* log, and it
@@ -1306,6 +1317,7 @@ with tab_partial:
         # ---- one row per partial save ---------------------------------------
         st.markdown("#### 📄 Every partial save")
         pcols = [c for c in ["pid", "tab_id", "enumerator", "last_submission_time",
+                             "topup_received", "topup_total", "topups", "partial_end_survey",
                              "current_status", "current_callcode",
                              "callback_when", "callback_due", "action_bucket",
                              "last_section", "total_attempts", "days_open",

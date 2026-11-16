@@ -188,6 +188,59 @@ def tablet_column(df):
     out["rs_tab_id"] = oth.where(oth != "", pick.where(pick != "", old))
     return out
 
+def topups_by_pid(subs):
+    """Every top-up paid to each pid, from two places on the forms:
+      - Long Survey, at the end of a partial or complete interview:
+        topup_check_ps = 1 (a partial) or topup_rate filled; amount topup_rate,
+        sent as topup_mobile_lab
+      - Communications form, logging a partial save (4_): rs_topup = 1; amount
+        topup_rate_rs, sent as topup_mobile_lab_rs
+    Returns pid | topup_received (Yes / No) | topup_total | topups (each one:
+    amount · how · date · on what) | partial_end_survey (the latest answer).
+    The phone numbers the top-up went to (phone_topup*) are never read."""
+    cols = ["pid", "topup_received", "topup_total", "topups", "partial_end_survey"]
+    if subs is None or subs.empty or "pid" not in subs.columns:
+        return pd.DataFrame(columns=cols)
+    get = lambda c: subs[c].fillna("").astype(str).str.strip() if c in subs.columns \
+        else pd.Series("", index=subs.index)
+    sup = pd.Series(False, index=subs.index)
+    for c in ("is_supervisor_closure", "sup_correction"):
+        sup |= get(c).str.lower().isin(["1", "1.0", "true", "yes"])
+    kind = get("survey_type")
+    t = _to_dt(get("endtime"))
+    when = t.dt.strftime("%d %b").fillna("")
+
+    ls_paid = (kind != "Communications form") & ((get("topup_check_ps") == "1") | (get("topup_rate") != ""))
+    rs_paid = get("rs_topup") == "1"
+    what_ls = get("callcode").map(lambda c: "complete" if c == "1" else "partial")
+    events = pd.concat([
+        pd.DataFrame({"pid": get("pid"), "amount": get("topup_rate"), "how": get("topup_mobile_lab"),
+                      "when": when, "on": what_ls, "_t": t})[ls_paid & ~sup],
+        pd.DataFrame({"pid": get("pid"), "amount": get("topup_rate_rs"),
+                      "how": get("topup_mobile_lab_rs"), "when": when, "on": "partial save log",
+                      "_t": t})[rs_paid & ~sup],
+    ]).sort_values("_t", kind="stable")
+
+    out = pd.DataFrame({"pid": get("pid").unique()})
+    out = out[out["pid"] != ""]
+    if len(events):
+        events["_n"] = pd.to_numeric(events["amount"], errors="coerce")
+        events["_txt"] = [" · ".join(x for x in (a or "amount?", h, w) if x) + f" ({o})"
+                          for a, h, w, o in zip(events["amount"], events["how"],
+                                                events["when"], events["on"])]
+        g = events.groupby("pid")
+        out["topup_total"] = out["pid"].map(g["_n"].sum(min_count=1))
+        out["topups"] = out["pid"].map(g["_txt"].apply(" + ".join)).fillna("")
+    else:
+        out["topup_total"], out["topups"] = float("nan"), ""
+    out["topup_received"] = out["topups"].map(lambda s: "Yes" if s else "No")
+    pes = get("partial_end_survey")
+    last_pes = (pd.DataFrame({"pid": get("pid"), "v": pes, "_t": t})[(pes != "") & ~sup]
+                .sort_values("_t", kind="stable").groupby("pid")["v"].last())
+    out["partial_end_survey"] = out["pid"].map(last_pes).fillna("")
+    return out[cols].reset_index(drop=True)
+
+
 @st.cache_data(ttl=REFRESH_SECONDS)
 def load_submissions():
     """Read the raw submission export (Kobo) from the sheet link, or the sample."""

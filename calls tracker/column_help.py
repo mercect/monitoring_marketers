@@ -95,6 +95,9 @@ HELP = {
     # completed / partially completed
     "topup_amount": "Top-up sent (topup_rate; for a partial save, the resume top-up if that is the only one).",
     "topup_mobile_lab": "How the top-up was sent: Top Up or Mobile Money.",
+    "topup_received": "Has this pid already been paid any top-up (partial interview, partial save log or complete)?",
+    "topup_total": "Sum of every top-up paid to this pid so far.",
+    "topups": "Each top-up: amount · how · date (partial interview / partial save log / complete).",
     "full_end_survey": "End-of-survey answer on a full interview (from the form).",
     "partial_end_survey": "End-of-survey answer on a partial interview (from the form).",
     "stop_reason": "Why the interview stopped: reschedule or drop.",

@@ -366,6 +366,7 @@ footer { color: var(--muted); font-size: 13px; }
       <ul>
         <li><strong>What counts:</strong> the pid's last submission is a <code>4_</code> (<code>4_D</code> held partial, <code>4_SC</code> upcoming reschedule, <code>4_NA</code> / <code>4_OF</code> a further attempt on a held case). Only what is still outstanding is listed.</li>
         <li><strong>No tablet id:</strong> it cannot be traced to a tablet. Start from the enumerator who last submitted.</li>
+        <li><strong>Top-ups already paid:</strong> <code>topup_received</code> says whether the respondent has had any top-up yet, <code>topup_total</code> how much in all, and <code>topups</code> each one (amount · how · date, and whether it came with the partial interview, the partial save log or a complete). Check it before paying again. <code>partial_end_survey</code> is the latest end-of-survey answer on the partial interview.</li>
         <li><strong>A tablet id that is not a tablet:</strong> a callcode or the pid was typed in the tablet box. Raise it with the enumerator.</li>
         <li><strong>By tablet:</strong> <code>enumerators</code> are everyone who last submitted on a pid held by that tablet.</li>
       </ul>

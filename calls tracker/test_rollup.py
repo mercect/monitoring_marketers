@@ -438,6 +438,26 @@ def check_active_lists_and_done(fails):
        ["Moto G22 Phone 4", "Doogee Tab 11", "Borrowed phone", "Other (not specified)", "7"])
     ok("tab_id codes become names", list(t["tab_id"]) ==
        ["Samsung Tab 25", "Other (not specified)", "Doogee Tab 11", "", "99"])
+    # top-ups already paid: the partial interview and the partial save log add up
+    from data_io import topups_by_pid
+    tp = topups_by_pid(pd.DataFrame({
+        "pid": ["A", "A", "B", "C", "C"],
+        "survey_type": ["Communications form", "Long Survey", "Communications form",
+                        "Long Survey", "Long Survey"],
+        "callcode": ["4_D", "3_D", "4_D", "3_D", "3_D"],
+        "endtime": ["2026-11-16T09:00:00.000Z", "2026-11-17T09:00:00.000Z",
+                    "2026-11-16T09:00:00.000Z", "2026-11-16T09:00:00.000Z", "2026-11-16T10:00:00.000Z"],
+        "rs_topup": ["1", "", "0", "", ""], "topup_rate_rs": ["30", "", "", "", ""],
+        "topup_mobile_lab_rs": ["Top Up", "", "", "", ""],
+        "topup_check_ps": ["", "1", "", "", ""], "topup_rate": ["", "10", "", "", ""],
+        "topup_mobile_lab": ["", "Mobile Money", "", "", ""],
+        "partial_end_survey": ["", "2", "", "1", ""]})).set_index("pid")
+    ok("top-ups add up across partial and resume log",
+       tp.at["A", "topup_received"] == "Yes" and tp.at["A", "topup_total"] == 40
+       and tp.at["A", "topups"].startswith("30 · Top Up") and "(partial)" in tp.at["A", "topups"])
+    ok("rs_topup = 0 is no top-up", tp.at["B", "topup_received"] == "No")
+    ok("latest partial_end_survey kept", tp.at["A", "partial_end_survey"] == "2"
+       and tp.at["C", "partial_end_survey"] == "1")
 
 
 def check_baseline(s, fails):
