@@ -809,6 +809,20 @@ def _last_nonempty(series):
     return ""
 
 
+SECTION_NOT_RECORDED = "not recorded on any form — ask the enumerator"
+
+
+def _section_label(code):
+    """rs_section number -> its label; a number not on the list -> 'Section
+    <n>' (never blank when the form recorded something)."""
+    c = str(code or "").strip()
+    if c.lower() in ("", "nan", "none"):
+        return ""
+    if c.endswith(".0"):
+        c = c[:-2]
+    return PARTIALSAVE_SECTIONS.get(c, f"Section {c}")
+
+
 def _lv(row, name):
     """A latest-row string value, trimmed."""
     return str(row.get(name, "") or "").strip()
@@ -918,12 +932,24 @@ def summarize(sample: pd.DataFrame, attempts: pd.DataFrame, now=None) -> pd.Data
             _hist_tab = (_last_nonempty(g.get("tab_id", pd.Series([], dtype=str)))
                          or _last_nonempty(g.get("rs_tab_id", pd.Series([], dtype=str))))
             _hist_section = _last_nonempty(g.get("last_section", pd.Series([], dtype=str)))
+            # Never blank for a case to resume: each source falls back to the
+            # next. rs_section numbers the form has but this list does not
+            # (a new or renumbered choice) show as "Section <n>" instead of
+            # disappearing; an earlier 4_* row's rs_section counts when the
+            # latest one left it empty; last_section_n is the last resort.
+            _hist_rs = _section_label(_last_nonempty(g.get("rs_section", pd.Series([], dtype=str))))
+            _hist_n = _last_nonempty(g.get("last_section_n", pd.Series([], dtype=str)))
+            _hist_n = f"Section {_hist_n}" if _hist_n else ""
             if active_ps:
                 tab_id = _lv(latest, "rs_tab_id") or _lv(latest, "tab_id") or _hist_tab
-                section = (PARTIALSAVE_SECTIONS.get(_lv(latest, "rs_section"), "")
-                           or _lv(latest, "last_section") or _hist_section)
+                section = (_section_label(_lv(latest, "rs_section"))
+                           or _lv(latest, "last_section") or _hist_section or _hist_n
+                           or _hist_rs or SECTION_NOT_RECORDED)
             else:
-                tab_id, section = _hist_tab, _hist_section
+                tab_id = _hist_tab
+                section = _hist_section or _hist_n or _hist_rs
+                if not section and latest.get("_cc", "") == "3_D":
+                    section = SECTION_NOT_RECORDED
 
             rows.append({
                 "pid": pid,

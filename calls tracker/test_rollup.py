@@ -458,6 +458,23 @@ def check_active_lists_and_done(fails):
     ok("rs_topup = 0 is no top-up", tp.at["B", "topup_received"] == "No")
     ok("latest partial_end_survey kept", tp.at["A", "partial_end_survey"] == "2"
        and tp.at["C", "partial_end_survey"] == "1")
+    # To be resumed: last_section is never blank
+    from rollup import summarize, frame_from_attempts, SECTION_NOT_RECORDED
+
+    def ls(rows):
+        a = pd.DataFrame([dict(pid=p, endtime=f"2026-11-1{d}T10:00:00.000Z", callcode=c, KEY=f"{p}{d}",
+                               enum_name="E", survey_type=t, rs_section=rs, last_section=l,
+                               last_section_n=n) for p, d, c, t, rs, l, n in rows])
+        return summarize(frame_from_attempts(a), a).set_index("pid")["last_section"]
+    s = ls([("A", 1, "4_D", "Communications form", "12", "", ""),          # a number not on the list
+            ("B", 1, "4_D", "Communications form", "7", "", ""),
+            ("B", 2, "4_NA", "Communications form", "", "", ""),           # latest left it blank
+            ("C", 1, "3_D", "Long Survey", "", "", "8"),                   # only the number
+            ("D", 1, "4_NA", "Communications form", "", "", "")])          # nothing anywhere
+    ok("unknown rs_section shows its number", s["A"] == "Section 12")
+    ok("an earlier rs_section is used", s["B"].startswith("Section S"))
+    ok("last_section_n as a last resort", s["C"] == "Section 8")
+    ok("nothing recorded says so", s["D"] == SECTION_NOT_RECORDED)
 
 
 def check_baseline(s, fails):
