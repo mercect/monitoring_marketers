@@ -1271,8 +1271,10 @@ with tab_attend:
         if _asg.empty:
             st.caption("Nobody is planned on this day.")
         else:
+            # grouped by call list (oldest list first), then by shift start
             _asg["_o"] = _asg["shift"].map(_start_min)
-            ch.dataframe(_by_list(_asg.sort_values(["_o", "list"]).drop(columns="_o"), "list"),
+            _asg["_l"] = _asg["list"].map({v: i for i, v in enumerate(_day_lists)})
+            ch.dataframe(_by_list(_asg.sort_values(["_l", "_o"]).drop(columns=["_o", "_l"]), "list"),
                          hide_index=True, width="stretch",
                          column_config={"people": st.column_config.Column(
                              help="✅ checked in · ⏳ not checked in · 🟠 calling another list",
