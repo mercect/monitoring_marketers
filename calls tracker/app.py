@@ -35,6 +35,7 @@ from rollup import (OPEN_STATUSES, summary_kpis,
                     is_attempt_row, is_contact_row, _to_dt)
 import assign
 import attendance
+import pace
 import column_help as ch
 import enumerators
 from calllist import (active_lists, assigned_list_number, first_call_date, lists_due,
@@ -654,9 +655,9 @@ _filter_box.caption(f"Showing **{len(summary_view)}** of {len(summary)} pids.")
 
 # Tab ORDER is set here; the `with tab_*:` bodies further down can stay in any
 # order, Streamlit renders each into its own tab regardless.
-(tab_summary, tab_attend, tab_action, tab_archive, tab_partial,
+(tab_summary, tab_attend, tab_pace, tab_action, tab_archive, tab_partial,
  tab_review, tab_guide) = st.tabs(
-    ["🧾 Calls summary", "🗓️ Attendance", "✅ Active pids", "🗄️ Inactive pids",
+    ["🧾 Calls summary", "🗓️ Attendance", "⏱️ Pace today", "✅ Active pids", "🗄️ Inactive pids",
      "💾 Partial saves",
      "🛂 Supervisor review", "📖 Guide"])
 
@@ -1378,6 +1379,113 @@ with tab_attend:
                        "list. A callback, a case sent back from Supervisor review or a "
                        "pid you assigned can be a good reason.")
             ch.dataframe(_off, hide_index=True, width="stretch")
+
+
+# ============================================================================
+# TAB — ⏱️ PACE TODAY (is the day moving?) — calculations in pace.py
+# Self-contained: to remove it, delete this block, its entry in st.tabs above
+# and `import pace`.
+# ============================================================================
+with tab_pace:
+    _pn = pd.Timestamp.now(tz="UTC").tz_localize(None)          # Sierra Leone = UTC
+    st.subheader(f"⏱️ Pace today — {_pn:%a %d %b}, {_pn:%H:%M}")
+    st.caption("Is the day moving? How fast each list is being started, who is working, "
+               "and how quickly assigned cases get their first call. Whole roster; the "
+               "filter at the top does not apply.")
+    _pcalls = pace.calls_of(subs, review._is_sup)
+    _p_chk, _p_sch, _ = attendance.load_attendance()
+    _p_sch = attendance.clean_schedule(_p_sch, name_map)
+    _p_chk = attendance.clean_checkins(_p_chk, name_map)
+    _p_today = _p_sch[_p_sch["date"] == _pn.date()]
+
+    # ---- 1. Lists worked today ------------------------------------------------
+    _plists = sorted(set(active_lists(summary, _pn.date()))
+                     | {v for v in _p_today["list"].astype(str) if v.strip()}, key=_list_key)
+    _plists = [v for v in _plists
+               if v in set(summary.get("assigned_list", pd.Series(dtype=str)).astype(str))]
+    # the day ends for a list when its last scheduled shift ends
+    _pend = {}
+    for _r in _p_today.itertuples():
+        _e = str(_r.shift).split("–")[-1].strip()
+        if _e and (_r.list not in _pend or pace._mins(_e) > pace._mins(_pend[_r.list])):
+            _pend[_r.list] = _e
+    st.markdown("#### 📋 Lists today")
+    _L = pace.lists_today(summary, _pcalls, _plists, _pn, _pend)
+    if _L.empty:
+        st.caption("No call list is being worked today.")
+    for _l in _L.itertuples():
+        if _l.left == 0:
+            _proj = ("✔", "all started", GREEN, "nothing left to start")
+        elif _l.projected is None:
+            _proj = ("—", "not started yet", GREY, f"day ends {_l.day_end}")
+        else:
+            _late = not _l.on_track
+            _proj = (f"{_l.projected:%H:%M}" if _l.projected.date() == _pn.date() else "tomorrow",
+                     "all started by (at this rate)", RED if _late else GREEN,
+                     f"day ends {_l.day_end}" + (" · too slow" if _late else ""))
+        category_row(f"📋 {_l.list}", _l.pids,
+                     (f"{_l.rate_per_hour:.1f} new cases / hour" if pd.notna(_l.rate_per_hour)
+                      and _l.rate_per_hour else "no new case started today"), [
+                         (_l.started_today, "started today", BLUE, "first call today"),
+                         (_l.last_hour, "started in the last hour", BLUE),
+                         (_l.left, "left to start", ORANGE if _l.left else GREY, "never called"),
+                         (_l.completed_today, "completed today", GREEN),
+                         _proj])
+
+    # ---- 2. Enumerators today -------------------------------------------------
+    st.markdown("#### 👥 Enumerators today")
+    _P = pace.people_today(_pcalls, _p_sch, _p_chk, _pn)
+    if _P.empty:
+        st.caption("Nobody is scheduled or calling today.")
+    else:
+        flag_tiles([
+            (int(_P["on_shift"].eq("on now").sum()), "on shift now", BLUE),
+            (int(_P["flag"].str.startswith("🔴").sum()), f"idle {pace.IDLE_MIN}+ min on shift", RED),
+            (int(_P["flag"].str.startswith("🟠").sum()), "on shift, no call yet", ORANGE),
+            (int(_P["calls"].sum()), "calls today", BLUE),
+            (int(_P["new_cases"].sum()), "new cases started", BLUE)])
+        _ptint = {v: LIST_TINTS[i % len(LIST_TINTS)] for i, v in
+                  enumerate(sorted({x for x in _P["list"].astype(str) if x.strip()}, key=_list_key))}
+        _Pd = _P.copy()        # blanks, not "None", for what does not apply
+        _Pd["idle_min"] = _Pd["idle_min"].map(lambda v: "" if pd.isna(v) else str(int(v)))
+        _Pd["calls_per_hour"] = _Pd["calls_per_hour"].map(lambda v: "" if pd.isna(v) else f"{v:.1f}")
+        ch.dataframe(
+            _Pd.style.apply(lambda r: [f"background-color: {_ptint.get(str(r['list']), '')}"] * len(r),
+                            axis=1),
+            hide_index=True, width="stretch",
+            column_config={"flag": st.column_config.Column(
+                               help=f"🔴 on shift and nothing submitted for {pace.IDLE_MIN}+ min · "
+                                    f"🟠 on shift {pace.NOT_STARTED_MIN}+ min without a call")})
+
+    # ---- 3. Calls by hour -----------------------------------------------------
+    st.markdown("#### 🕐 Calls by hour")
+    _H = pace.calls_by_hour(_pcalls, _pn)
+    if _H.empty:
+        st.caption("No calls yet today.")
+    else:
+        import altair as alt
+        _bars = (alt.Chart(_H)
+                 .mark_bar(color=BLUE, cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+                 .encode(x=alt.X("hour:N", sort=None, title="hour (Sierra Leone time)",
+                                 axis=alt.Axis(labelAngle=0)),
+                         y=alt.Y("calls:Q", title="calls", axis=alt.Axis(tickMinStep=1)),
+                         tooltip=[alt.Tooltip("hour:N"), alt.Tooltip("calls:Q"),
+                                  alt.Tooltip("new_cases:Q", title="new cases")])
+                 .properties(height=220))
+        st.altair_chart(_bars, use_container_width=True)
+        st.caption(f"{int(_H['calls'].sum())} calls today, {int(_H['new_cases'].sum())} of them "
+                   "first calls on a new case. A dip shows a break or a gap between shifts.")
+
+    # ---- 4. Handover ----------------------------------------------------------
+    st.markdown("#### 🔄 Handover")
+    _lag = pace.assign_lag(assign.assignments(decisions), _pcalls, _pn)
+    flag_tiles([
+        (f"{_lag['median_min']} min" if _lag["median_min"] is not None else "—",
+         "assigned → first call (median)",
+         (RED if _lag["median_min"] > assign.LATE_MINUTES else GREEN)
+         if _lag["median_min"] is not None else GREY, "assignments made today"),
+        (_lag["called"], "assigned today and called", GREEN),
+        (_lag["waiting"], "assigned today, not called yet", ORANGE)])
 
 # ============================================================================
 with tab_partial:

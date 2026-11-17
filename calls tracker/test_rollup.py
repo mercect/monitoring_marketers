@@ -560,6 +560,44 @@ def check_active_lists_and_done(fails):
     ok("nothing recorded says so", s["D"] == SECTION_NOT_RECORDED)
 
 
+def check_pace(fails):
+    """pace.py: today's starts, projection, idle flags, hourly counts, lag."""
+    import pace
+    ok = lambda name, cond: None if cond else fails.append(f"[pace] {name}")
+    now = pd.Timestamp("2026-11-17 12:00")
+    calls = pd.DataFrame({
+        "pid": ["a", "b", "c", "a", "z"],
+        "enumerator": ["E1", "E1", "E2", "E1", "E2"],
+        "t": pd.to_datetime(["2026-11-17 08:00", "2026-11-17 10:00", "2026-11-17 11:30",
+                             "2026-11-17 11:00", "2026-11-16 10:00"]),
+        "callcode": ["2_NA", "2_OF", "1", "2_NA", "2_NA"]})
+    roster = pd.DataFrame({"pid": ["a", "b", "c", "d", "e", "z"],
+                           "assigned_list": ["L1"] * 5 + ["L0"],
+                           "case_state": ["Action", "Action", "Archived", "Not assigned", "Not assigned", "Action"],
+                           "eligible_to_call": 1})
+    L = pace.lists_today(roster, calls, ["L1"], now, {"L1": "21:00"}).iloc[0]
+    ok("3 started today, 2 left, 1 completed", (L.started_today, L.left, L.completed_today) == (3, 2, 1))
+    ok("rate = 3 in 4 hours, so the 2 left take ~2h40", round(L.rate_per_hour, 2) == 0.75
+       and str(L.projected)[:16] == "2026-11-17 14:40" and L.on_track)
+    late = pace.lists_today(roster, calls, ["L1"], now, {"L1": "13:00"}).iloc[0]
+    ok("off track when the projection is after the day end", late.on_track is not None and not late.on_track)
+    sch = pd.DataFrame({"date": [now.date()] * 3, "enumerator": ["E1", "E2", "E3"],
+                        "list": ["L1"] * 3, "shift": ["7:00–14:00", "7:00–14:00", "8:00–15:00"]})
+    chk = pd.DataFrame({"date": [now.date()], "enumerator": ["E1"], "arrived": ["07:05"]})
+    P = pace.people_today(calls, sch, chk, now, first_call_pids={"a", "b", "c"}).set_index("enumerator")
+    ok("E1: 3 calls today, 2 new cases, idle 60 min -> flagged",
+       P.at["E1", "calls"] == 3 and P.at["E1", "new_cases"] == 2 and P.at["E1", "idle_min"] == 60
+       and P.at["E1", "flag"].startswith("🔴"))
+    ok("E2: recent call, not flagged", P.at["E2", "flag"] == "" and P.at["E2", "idle_min"] == 30)
+    ok("E3: on shift 4h without a call -> flagged", P.at["E3", "flag"].startswith("🟠"))
+    H = pace.calls_by_hour(calls, now)
+    ok("calls by hour from 08:00 to now", list(H["hour"])[0] == "08:00" and list(H["hour"])[-1] == "12:00"
+       and int(H["calls"].sum()) == 4 and int(H["new_cases"].sum()) == 3)
+    asg = pd.DataFrame({"pid": ["a", "d"], "assigned_at": pd.to_datetime(["2026-11-17 07:40", "2026-11-17 09:00"])})
+    ok("assign lag: a called after 20 min, d waiting",
+       pace.assign_lag(asg, calls, now) == {"median_min": 20, "called": 1, "waiting": 1})
+
+
 def check_baseline(s, fails):
     got = {"rows": len(s), "completed": int((s["is_complete"] == 1).sum()),
            "ever_attempted": int(s["ever_attempted"].sum()),
@@ -615,6 +653,7 @@ def main():
     check_attendance(fails)
     check_lists_due(fails)
     check_active_lists_and_done(fails)
+    check_pace(fails)
     print("supervisor review rules + enumerator names + assignments + reopen + attendance: checked")
 
     # --- fixture: invariants + baseline + determinism -------------------------

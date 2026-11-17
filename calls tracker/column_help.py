@@ -113,6 +113,14 @@ HELP = {
     "qc4_attention_yes": "Survey quality: details on attention.",
     "qc6_difficult": "Survey quality: was anything difficult?",
     "qc6_difficult_other": "Survey quality: what else was difficult.",
+    # pace today
+    "on_shift": "On now = their scheduled shift covers the current time.",
+    "new_cases": "Pids whose first ever call this person made today.",
+    "completes": "Interviews completed today.",
+    "first_call": "Time of their first call today.",
+    "last_call": "Time of their latest call today.",
+    "idle_min": "Minutes since their last submission, while on shift. Flagged after 45.",
+    "calls_per_hour": "Calls today per hour on shift so far (first to last call if not on the schedule).",
     # closed pids
     "validated": "✔ once a supervisor confirmed or corrected the closure (final); pending until then.",
     "is_supervisor": "Was the pid closed by a supervisor?",

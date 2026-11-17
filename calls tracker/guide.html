@@ -124,6 +124,7 @@ footer { color: var(--muted); font-size: 13px; }
       <li><a href="#codes">Callcodes</a></li>
       <li><a href="#summary">Calls summary</a></li>
       <li><a href="#attendance">Attendance</a></li>
+      <li><a href="#pace">Pace today</a></li>
       <li><a href="#active">Active pids</a></li>
       <li><a href="#inactive">Inactive pids</a></li>
       <li><a href="#partial">Partial saves</a></li>
@@ -264,6 +265,19 @@ footer { color: var(--muted); font-size: 13px; }
         <li><strong>Calls on another list</strong> are listed call by call under the table. A callback, a case sent back from Supervisor review or a pid you assigned can be a good reason, so check before acting.</li>
         <li>The list of a call is the <code>assigned_list</code> of the pid called. To change someone's list, change the <em>schedule</em> tab; the dashboard reads it again within 5 minutes.</li>
       </ul>
+    </section>
+
+    <section id="pace">
+      <h2>⏱️ Pace today</h2>
+      <p>Is the day moving? Everything here is about today, in Sierra Leone time, for the whole roster (the filter at the top does not apply).</p>
+      <h3>📋 Lists today</h3>
+      <p>One line per call list being worked today: pids started today (their first ever call was today), started in the last hour, left to start (never called), completed today, and <strong>all started by</strong>: when the list would be fully started at today's rate. It is green when that is before the day ends for the list (the end of its last scheduled shift, or 21:00), red ("too slow") when after. ✔ means nothing is left to start.</p>
+      <h3>👥 Enumerators today</h3>
+      <p>Everyone scheduled today or calling today, in the colour of their list: calls, new cases, completes, first and last call, minutes since their last submission while on shift (<code>idle_min</code>) and calls per hour. Flagged first: 🔴 on shift with nothing submitted for 45 minutes or more; 🟠 on shift for 30 minutes or more without a single call. Then the people on shift now, the rest of the schedule, and people calling who are not on the schedule.</p>
+      <h3>🕐 Calls by hour</h3>
+      <p>Calls made each hour today (hover a bar for how many were first calls on a new case). A dip shows a break or a gap between shifts.</p>
+      <h3>🔄 Handover</h3>
+      <p>For assignments made today in 🆕 To be assigned: the median minutes from assigning to the first call (red when over 30), how many were called and how many are still waiting.</p>
     </section>
 
     <section id="active">
