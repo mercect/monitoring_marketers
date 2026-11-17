@@ -288,7 +288,10 @@ def list_progress(summary_view, subs, day):
     rows = []
     for name, g in groups:
         n = len(g)
-        row = {"list": name, "pids": n}
+        row = {"list": name, "pids": n,
+               # open now: called at least once and not closed (case_state Action)
+               "active": int((g.get("case_state", pd.Series("", index=g.index)).astype(str)
+                              == "Action").sum())}
         for k, col in overall.items():
             v = pd.to_numeric(g.get(col, 0), errors="coerce").fillna(0)
             row[f"{k}_all"] = int((v == 1).sum())
@@ -833,6 +836,8 @@ with tab_summary:
             ("Overall", [(_p.pids, "in the sample", GREY)]
              + [_share(k, "all") for k in ("attempted", "reached", "completed")]),
             ("Today", [None] + [_share(k, "today") for k in ("attempted", "reached", "completed")]),
+            ("Now", [None, (_p.active, "active pids", BLUE if _p.active else GREY,
+                            f"open now · {_pc(_p.active, _p.pids)} of the list")]),
         ])
     st.caption("Shares are of everyone on the list. Reached = picked up the phone at least once. "
                "Today = calls made today (Sierra Leone time).")
