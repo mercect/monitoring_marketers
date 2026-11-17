@@ -1180,6 +1180,51 @@ with tab_action:
         ch.dataframe(style_rows(_w[_wcols], red=_w["minutes_waiting"] > assign.LATE_MINUTES),
                      width="stretch", hide_index=True)
 
+        # ↩ Undo: a supervisor takes back an assignment nobody has called yet;
+        # the pid returns to 🆕 To be assigned. Saved in the decisions log
+        # (assignment / unassigned), so the history stays.
+        if "unassign_round" not in st.session_state:
+            st.session_state["unassign_round"] = 0
+        if st.session_state.get("unassign_flash"):
+            st.success(st.session_state.pop("unassign_flash"))
+        with st.expander("↩ Undo an assignment"):
+            _u = _w[["pid", "assigned_to", "assigned_at"]].copy()
+            _u.insert(0, "undo", False)
+            _ue = ch.data_editor(_u, hide_index=True, width="stretch",
+                                 key=f"unassign_editor_{st.session_state['unassign_round']}",
+                                 disabled=["pid", "assigned_to", "assigned_at"],
+                                 column_config={"undo": st.column_config.CheckboxColumn(
+                                     "↩ undo", width="small")})
+            _undo = _ue[_ue["undo"]]
+            if _undo.empty:
+                st.caption("Tick the assignments to take back. They go back to To be assigned.")
+            else:
+                _uby = st.selectbox("Undone by", enumerators.supervisors(enum_roster), index=None,
+                                    key="unassign_by",
+                                    placeholder="Who is undoing it (goes into the log)") or ""
+                _uwhy = st.text_input("Reason (optional)", key="unassign_why")
+                _uprob = review.writer_problem()
+                if _uprob:
+                    st.info(f"Saving is off: {_uprob}")
+                if st.button(f"↩ Undo {len(_undo)} assignment(s)", type="primary",
+                             disabled=bool(_uprob) or not _uby.strip()):
+                    try:
+                        review.append_decisions([
+                            {"sup_time": review.now_text(), "sup_by": _uby.strip(), "pid": p,
+                             "sup_type": "assignment", "sup_action": "unassigned",
+                             "sup_comment": _uwhy.strip(), "assigned_to": t}
+                            for p, t in zip(_undo["pid"], _undo["assigned_to"])])
+                    except Exception as e:
+                        st.error(f"Not saved — {e}")
+                    else:
+                        st.session_state["unassign_round"] += 1
+                        for _k in ("unassign_by", "unassign_why"):
+                            st.session_state.pop(_k, None)
+                        st.session_state["unassign_flash"] = (
+                            f"↩ Undid {len(_undo)} assignment(s): back in To be assigned.")
+                        st.cache_data.clear()
+                        st.rerun()
+
     # 🔎 To be reviewed, then 📵 To keep calling: the last queues on the page.
     if not cases.empty:
         _render_queue("Review", "🔎 To be reviewed (hard to reach)")

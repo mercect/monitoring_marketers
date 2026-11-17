@@ -66,8 +66,9 @@ def set_pid_info(roster):
 TYPES = {"validation": {"confirmed", "corrected", "sent_back"},
          # reopened = any closed case put back to work by the supervisor
          "decision": {"closed", "keep_trying", "reopened"},
-         # a pid handed out for its first call (assign.py); changes no status
-         "assignment": {"assigned"},
+         # a pid handed out for its first call (assign.py); changes no status.
+         # unassigned = a supervisor undid it before anyone called the pid
+         "assignment": {"assigned", "unassigned"},
          # the supervisor confirms they acted on a case in To be revised;
          # changes no status, note or queue
          "followup": {"actioned"}}

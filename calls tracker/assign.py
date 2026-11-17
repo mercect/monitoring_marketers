@@ -35,17 +35,27 @@ def utc_now():
 
 
 def assignments(decisions):
-    """One row per assigned pid (its FIRST assignment): pid, assigned_to,
-    assigned_by, assigned_at, reason."""
+    """One row per assigned pid (its FIRST assignment since any undo): pid,
+    assigned_to, assigned_by, assigned_at, reason."""
     cols = ["pid", "assigned_to", "assigned_by", "assigned_at", "reason"]
     if decisions is None or decisions.empty:
         return pd.DataFrame(columns=cols)
-    d = decisions[(decisions["sup_type"] == "assignment")
-                  & (decisions["sup_action"] == "assigned")].copy()
+    a = decisions[decisions["sup_type"] == "assignment"].copy()
+    if a.empty:
+        return pd.DataFrame(columns=cols)
+    a["assigned_at"] = pd.to_datetime(a["sup_time"], errors="coerce")
+    a = a.sort_values("assigned_at", kind="stable")
+    # An undo ("unassigned") cancels every assignment before it: only an
+    # assignment made after the pid's last undo counts, so an undone pid goes
+    # back to To be assigned until it is handed out again.
+    undone = a[a["sup_action"] == "unassigned"].groupby("pid")["assigned_at"].max()
+    d = a[a["sup_action"] == "assigned"]
+    if len(undone):
+        since = pd.to_datetime(d["pid"].map(undone))
+        d = d[since.isna() | (d["assigned_at"] > since)]
     if d.empty:
         return pd.DataFrame(columns=cols)
-    d["assigned_at"] = pd.to_datetime(d["sup_time"], errors="coerce")
-    d = d.sort_values("assigned_at", kind="stable").groupby("pid").head(1)
+    d = d.groupby("pid").head(1)
     return pd.DataFrame({
         "pid": d["pid"].values,
         "assigned_to": d.get("assigned_to", pd.Series("", index=d.index)).values,

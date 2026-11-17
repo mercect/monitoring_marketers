@@ -320,6 +320,7 @@ footer { color: var(--muted); font-size: 13px; }
       <div class="panel queue" style="--qc: var(--red)">
         <h3>📨 Assigned, not called yet</h3>
         <p>Pids assigned in the dashboard that nobody has called yet, longest waiting first, with who they were given to and how many minutes ago. <strong>Red after 30 minutes:</strong> each enumerator takes one case at a time, so a case should be called well within that.</p>
+        <p><strong>↩ Undo an assignment:</strong> open it, tick the assignments to take back, choose who is undoing it (and why, if useful) and click <strong>Undo</strong>. Only pids nobody has called yet are listed. They go back to 🆕 To be assigned; the undo is kept in the decisions log.</p>
         <div class="flags"><div class="flag red"><b>1</b><span>not called within 30 min</span></div></div>
       </div>
       <div class="panel queue" style="--qc: var(--grey)">

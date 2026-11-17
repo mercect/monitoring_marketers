@@ -224,6 +224,15 @@ def check_assignments(fails):
     gaps = assign.out_of_order(["p3"], r, {"p2"})
     ok("ticking #3 while #1 waits is out of order", list(gaps) == ["p3"] and "p1" in gaps["p3"][0])
     ok("ticking #1 is in order", assign.out_of_order(["p1"], r, {"p2"}) == {})
+    # undoing an assignment
+    from review import clean_log as _cl, COLUMNS as _C
+    _d = lambda rows: _cl(pd.DataFrame([dict(zip(_C, r + ("",))) for r in rows]))
+    a1 = ("2026-11-16 08:00:00", "S", "p1", "assignment", "assigned", "", "", "")
+    un = ("2026-11-16 09:00:00", "S", "p1", "assignment", "unassigned", "", "wrong list", "")
+    a2 = ("2026-11-16 10:00:00", "S", "p1", "assignment", "assigned", "", "", "")
+    ok("an undo takes the pid off the assigned list", assign.assignments(_d([a1, un])).empty)
+    ok("assigned again after the undo counts, from the new time",
+       str(assign.assignments(_d([a1, un, a2]))["assigned_at"].iloc[0])[:16] == "2026-11-16 10:00")
 
 
 def check_decision_list_info(fails):
