@@ -1137,7 +1137,7 @@ with tab_action:
 
     # Who can be assigned this list: the enumerators the schedule (check-in
     # Sheet, schedule tab) puts on it today. Everyone when the schedule has
-    # nobody on it, or when "Show all enumerators" is ticked.
+    # nobody on it.
     _assign_names = _enum_names
     if _list_now:
         _sch_raw = attendance.load_attendance()[1]
@@ -1146,13 +1146,10 @@ with tab_action:
                               & (_sch_all["list_key"] == attendance.list_key(_list_now))]
         _on_list = list(dict.fromkeys(_sch_today["enumerator"]))
         if _on_list:
-            _all = st.checkbox("Show all enumerators", key="assign_show_all",
-                               help="Off: only the enumerators the schedule puts on this list today.")
-            if not _all:
-                _assign_names = _on_list
-                st.caption(f"Assign to: the {len(_on_list)} "
-                           f"enumerator{'s' if len(_on_list) != 1 else ''} scheduled on "
-                           f"**{_list_now}** today ({', '.join(_on_list)}).")
+            _assign_names = _on_list
+            st.caption(f"Assign to: the {len(_on_list)} "
+                       f"enumerator{'s' if len(_on_list) != 1 else ''} scheduled on "
+                       f"**{_list_now}** today ({', '.join(_on_list)}).")
         else:
             st.caption(f"Nobody is scheduled on {_list_now} today, so every enumerator is listed.")
 
