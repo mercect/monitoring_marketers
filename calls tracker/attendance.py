@@ -287,6 +287,10 @@ def _name_score(a, b):
     ta, tb = enumerators.norm(a).split(), enumerators.norm(b).split()
     if not ta or not tb:
         return 0.0
+    # a name typed without its last part: 'Issa Adams' ~ 'Issa Adams Kamara'
+    short, long_ = sorted((ta, tb), key=len)
+    if 2 <= len(short) < len(long_) and long_[:len(short)] == short:
+        return 0.9
     if len(ta) < 2 or len(tb) < 2 or ta[0][0] != tb[0][0] or ta[-1][0] != tb[-1][0]:
         return 0.0                       # 'Salieu' is not 'Alieu'
     first = SM(None, ta[0], tb[0]).ratio()

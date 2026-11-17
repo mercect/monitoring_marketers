@@ -1397,6 +1397,8 @@ with tab_pace:
     _p_sch = attendance.clean_schedule(_p_sch, name_map)
     _p_chk = attendance.clean_checkins(_p_chk, name_map)
     _p_today = _p_sch[_p_sch["date"] == _pn.date()]
+    # same close-spelling matching as Attendance ('Issa Adams' -> 'Issa Adams Kamara')
+    _p_chk, _pcalls, _ = attendance.align_names(_pn.date(), _p_sch, _p_chk, _pcalls)
 
     # ---- 1. Lists worked today ------------------------------------------------
     _plists = sorted(set(active_lists(summary, _pn.date()))

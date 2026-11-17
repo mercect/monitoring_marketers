@@ -343,6 +343,8 @@ def check_attendance(fails):
     import attendance as at
     from enumerators import alias_map
     ok = lambda name, cond: None if cond else fails.append(f"[attendance] {name}")
+    ok("a name typed without its last part matches", at._name_score("Issa Adams", "Issa Adams Kamara") > 0
+       and at._name_score("Issa Kamara", "Issa Adams Kamara") == 0)
     ok("list spellings meet", at.list_key("12 Nov D4") == at.list_key("12Nov-D4")
        == at.list_key("12nov-d4") and at.list_key("03Nov-D5") == at.list_key("3Nov-D5"))
     roster = pd.DataFrame({"name": ["Salieu Nabay", "Ann B", "Cy D", "Di E"],
