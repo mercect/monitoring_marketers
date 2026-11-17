@@ -1116,6 +1116,21 @@ with tab_action:
     new_cases = new_cases[~new_cases["pid"].isin(_handed)]
     st.markdown(f"#### 🆕 To be assigned ({len(new_cases)})")
 
+    # One call list at a time: each list is handed out on its own, in its own
+    # call_order. Starts on a list being called today.
+    _alist = new_cases.get("assigned_list", pd.Series("", index=new_cases.index))         .fillna("").astype(str).str.strip()
+    _asg_lists = sorted({v for v in _alist if v}, key=_list_key)
+    if len(_asg_lists) > 1 or (_asg_lists and (_alist == "").any()):
+        _counts = _alist.value_counts()
+        _opts = _asg_lists + (["(no list)"] if (_alist == "").any() else [])
+        _today_lists = [v for v in active_lists(summary, pd.Timestamp.now(tz="UTC").date())
+                        if v in _asg_lists]
+        _pick = st.radio("Assign from list", _opts,
+                         index=_opts.index(_today_lists[0]) if _today_lists else 0,
+                         horizontal=True, key="assign_list_pick",
+                         format_func=lambda v: f"{v} ({int(_counts.get('' if v == '(no list)' else v, 0))})")
+        new_cases = new_cases[_alist.values == ("" if _pick == "(no list)" else _pick)]
+
     # Headline: what was skipped in call-list order. Measured over the WHOLE
     # roster, so a sidebar filter cannot hide what was already tried.
     _front = skipped_in_order(summary, handed=_handed)
@@ -1238,17 +1253,32 @@ with tab_attend:
         # is in (✅), not in yet (⏳) or calling another list (🟠).
         st.markdown("#### 📋 Assignment")
         _asg = attendance.assignment(_rows)
+        # One colour per call list, the same in both tables, so who is on
+        # which list reads at a glance. Translucent: works in either theme.
+        _LIST_TINTS = ["rgba(28,126,214,.18)", "rgba(47,158,68,.20)", "rgba(240,140,0,.20)",
+                       "rgba(132,94,247,.20)", "rgba(12,166,120,.20)", "rgba(230,73,128,.18)"]
+        _day_lists = sorted({v for v in _rows["planned_list"].astype(str) if v.strip()}, key=_list_key)
+        _tint = {v: _LIST_TINTS[i % len(_LIST_TINTS)] for i, v in enumerate(_day_lists)}
+
+        def _by_list(df, col):
+            return df.style.apply(
+                lambda r: [f"background-color: {_tint.get(str(r[col]), '')}"] * len(r), axis=1
+            ).format(na_rep="", precision=0)
+        if _tint:
+            st.markdown(" ".join(f'<span style="background:{c};padding:2px 10px;border-radius:6px;'
+                                 f'margin-right:6px;font-size:0.85rem">{v}</span>'
+                                 for v, c in _tint.items()), unsafe_allow_html=True)
         if _asg.empty:
             st.caption("Nobody is planned on this day.")
         else:
             _asg["_o"] = _asg["shift"].map(_start_min)
-            ch.dataframe(_asg.sort_values(["_o", "list"]).drop(columns="_o"),
+            ch.dataframe(_by_list(_asg.sort_values(["_o", "list"]).drop(columns="_o"), "list"),
                          hide_index=True, width="stretch",
                          column_config={"people": st.column_config.Column(
                              help="✅ checked in · ⏳ not checked in · 🟠 calling another list",
                              width="large")})
         st.markdown("#### 👥 Everyone today")
-        ch.dataframe(_rows, hide_index=True, width="stretch",
+        ch.dataframe(_by_list(_rows, "planned_list"), hide_index=True, width="stretch",
                      column_config={"late_min": st.column_config.NumberColumn(format="%d"),
                                     "flag": st.column_config.Column(
                                         help="🔴 no check-in · 🟠 calls on another list · "
