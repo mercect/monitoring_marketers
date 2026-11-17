@@ -320,7 +320,6 @@ footer { color: var(--muted); font-size: 13px; }
       <div class="panel queue" style="--qc: var(--red)">
         <h3>📨 Assigned, not called yet</h3>
         <p>Pids assigned in the dashboard that nobody has called yet, longest waiting first, with who they were given to and how many minutes ago. <strong>Red after 30 minutes:</strong> each enumerator takes one case at a time, so a case should be called well within that.</p>
-        <p><strong>↩ Undo an assignment:</strong> open it, tick the assignments to take back, choose who is undoing it (and why, if useful) and click <strong>Undo</strong>. Only pids nobody has called yet are listed. They go back to 🆕 To be assigned; the undo is kept in the decisions log.</p>
         <div class="flags"><div class="flag red"><b>1</b><span>not called within 30 min</span></div></div>
       </div>
       <div class="panel queue" style="--qc: var(--grey)">
@@ -413,6 +412,9 @@ footer { color: var(--muted); font-size: 13px; }
           <tr><td>🗄️ Closed (final)</td><td><strong>ACTIVE</strong>: reopen it, as in <em>Reopen a final closure</em>. <strong>INACTIVE</strong>: correct its code. Comment required.</td></tr>
         </tbody>
       </table></div>
+
+      <h3>↩ Undo an assignment</h3>
+      <p>Lists the pids assigned in the dashboard that nobody has called yet. Tick the ones to take back, add a reason if useful and click <strong>Undo</strong> (editor password needed). They go back to 🆕 To be assigned; the undo is kept in the decisions log under your name.</p>
 
       <h3>Reopen a final closure</h3>
       <p>For closures that are already final: validated by the Data Team, or closed by the Data Team. Closures not validated yet are not listed here; send those back from <em>To validate</em> with status ACTIVE. Completed interviews cannot be reopened. Choose the pid, write the reason (shown to the enumerators) and click <strong>Reopen</strong>. The case goes back to the state of its last open call and appears first in Active pids, under <em>To be revised — Data Team checked</em>. If it is closed again later, that closure needs validating again.</p>

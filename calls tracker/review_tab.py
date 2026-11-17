@@ -173,8 +173,15 @@ def render(summary, subs, open_cases, decisions, dmeta):
     closed = summary[(_st == "INACTIVE") & ~_done
                      & ~summary["pid"].isin(set(todo["pid"]) if "pid" in todo else set())].copy()
 
+    # Assigned in the dashboard and not called yet: the only assignments a
+    # supervisor can still take back.
+    import assign
+    _asg = assign.assignments(decisions)
+    waiting = _asg[~_asg["pid"].isin(set(assign.first_calls(subs)["pid"]))]
+
     section = st.radio("Section", [f"✔ To validate ({len(todo)})",
                                    f"🔁 Reopen a final closure ({len(closed)})",
+                                   f"↩ Undo an assignment ({len(waiting)})",
                                    f"📜 Log ({len(decisions)})"],
                        horizontal=True, label_visibility="collapsed", key="review_section")
 
@@ -182,6 +189,8 @@ def render(summary, subs, open_cases, decisions, dmeta):
         _validate(todo, others, summary, subs, can_save)
     elif section.startswith("🔁"):
         _reopen(closed, summary, subs, keys, can_save)
+    elif section.startswith("↩"):
+        _unassign(waiting, summary, can_save)
     else:
         _log(decisions)
 
@@ -448,6 +457,42 @@ def _reopen(closed, summary, subs, keys, can_save):
         _save([_entry(pid, "decision", "reopened", "", comment, keys.get(pid, ""))],
               f"{pid} (reopened)")
 
+
+
+# -----------------------------------------------------------------------------
+def _unassign(waiting, summary, can_save):
+    """Take back assignments nobody has called yet: the pids go back to 🆕 To
+    be assigned. Saved as assignment / unassigned in the decisions log, under
+    the editor's name; the original assignment stays in the log."""
+    if waiting.empty:
+        st.info("No assignments waiting for a first call.")
+        return
+    w = waiting.merge(summary[[c for c in ["pid", "assigned_list", "call_order"]
+                               if c in summary.columns]].drop_duplicates("pid"),
+                      on="pid", how="left")
+    w["assigned_at"] = pd.to_datetime(w["assigned_at"]).dt.strftime("%d %b %H:%M")
+    w = w.sort_values("assigned_at", ascending=False)
+    cols = [c for c in ["assigned_list", "pid", "call_order", "assigned_to", "assigned_by",
+                        "assigned_at"] if c in w.columns]
+    show = w[cols].copy()
+    show.insert(0, "undo", False)
+    rnd = st.session_state.setdefault("unassign_round", 0)
+    ed = ch.data_editor(show, hide_index=True, width="stretch", key=f"unassign_editor_{rnd}",
+                        disabled=cols, column_config={"undo": st.column_config.CheckboxColumn(
+                            "↩ undo", width="small")})
+    picked = ed[ed["undo"]]
+    if picked.empty:
+        st.caption("Tick the assignments to take back. They go back to 🆕 To be assigned.")
+        return
+    why = st.text_input("Reason (optional)", key=f"unassign_why_{rnd}")
+    if st.button(f"↩ Undo {len(picked)} assignment(s)", type="primary", disabled=not can_save):
+        rows = []
+        for p, t in zip(picked["pid"], picked["assigned_to"]):
+            e = _entry(p, "assignment", "unassigned", "", why, "")
+            e["assigned_to"] = t
+            rows.append(e)
+        st.session_state["unassign_round"] = rnd + 1
+        _save(rows, f"{len(rows)} undone assignment(s): back in To be assigned")
 
 # -----------------------------------------------------------------------------
 def _log(decisions):
