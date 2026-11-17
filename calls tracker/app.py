@@ -1118,7 +1118,8 @@ with tab_action:
 
     # One call list at a time: each list is handed out on its own, in its own
     # call_order. Starts on a list being called today.
-    _alist = new_cases.get("assigned_list", pd.Series("", index=new_cases.index))         .fillna("").astype(str).str.strip()
+    _alist = (new_cases.get("assigned_list", pd.Series("", index=new_cases.index))
+              .fillna("").astype(str).str.strip())
     _asg_lists = sorted({v for v in _alist if v}, key=_list_key)
     if len(_asg_lists) > 1 or (_asg_lists and (_alist == "").any()):
         _counts = _alist.value_counts()
@@ -1130,6 +1131,30 @@ with tab_action:
                          horizontal=True, key="assign_list_pick",
                          format_func=lambda v: f"{v} ({int(_counts.get('' if v == '(no list)' else v, 0))})")
         new_cases = new_cases[_alist.values == ("" if _pick == "(no list)" else _pick)]
+    _list_now = (_pick if len(_asg_lists) > 1 or (_asg_lists and (_alist == "").any())
+                 else (_asg_lists[0] if _asg_lists else ""))
+    _list_now = "" if _list_now == "(no list)" else _list_now
+
+    # Who can be assigned this list: the enumerators the schedule (check-in
+    # Sheet, schedule tab) puts on it today. Everyone when the schedule has
+    # nobody on it, or when "Show all enumerators" is ticked.
+    _assign_names = _enum_names
+    if _list_now:
+        _sch_raw = attendance.load_attendance()[1]
+        _sch_all = attendance.clean_schedule(_sch_raw, name_map)
+        _sch_today = _sch_all[(_sch_all["date"] == pd.Timestamp.now(tz="UTC").date())
+                              & (_sch_all["list_key"] == attendance.list_key(_list_now))]
+        _on_list = list(dict.fromkeys(_sch_today["enumerator"]))
+        if _on_list:
+            _all = st.checkbox("Show all enumerators", key="assign_show_all",
+                               help="Off: only the enumerators the schedule puts on this list today.")
+            if not _all:
+                _assign_names = _on_list
+                st.caption(f"Assign to: the {len(_on_list)} "
+                           f"enumerator{'s' if len(_on_list) != 1 else ''} scheduled on "
+                           f"**{_list_now}** today ({', '.join(_on_list)}).")
+        else:
+            st.caption(f"Nobody is scheduled on {_list_now} today, so every enumerator is listed.")
 
     # Headline: what was skipped in call-list order. Measured over the WHOLE
     # roster, so a sidebar filter cannot hide what was already tried.
@@ -1156,7 +1181,7 @@ with tab_action:
         _show = yesno(new_cases[newcols])
         _show["days_waiting"] = new_cases["days_waiting"].astype("Int64")
         # Tick, choose the enumerator, Assign: recorded in the decisions log.
-        assign.assign_panel(_show, summary, _handed, _enum_names,
+        assign.assign_panel(_show, summary, _handed, _assign_names,
                             enumerators.supervisors(enum_roster))
 
     # ---- assigned in the dashboard, not called yet ---------------------------
