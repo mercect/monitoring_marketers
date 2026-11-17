@@ -108,6 +108,10 @@ def style_overdue(df, when_col="callback_when", mask=None):
 
 RED, ORANGE, GREY = "#e03131", "#f08c00", "#868e96"
 BLUE, GREEN = "#1c7ed6", "#2f9e44"
+# One translucent colour per call list (oldest list first), shared by
+# Attendance and the "On now" lines in Active pids.
+LIST_TINTS = ["rgba(28,126,214,.18)", "rgba(47,158,68,.20)", "rgba(240,140,0,.20)",
+              "rgba(132,94,247,.20)", "rgba(12,166,120,.20)", "rgba(230,73,128,.18)"]
 
 
 def flag_tiles(items):
@@ -1085,8 +1089,45 @@ with tab_action:
                 flag_tiles(_flags)
                 ch.dataframe(style_overdue(yesno(rows), mask=_red),
                              width="stretch", hide_index=True)
+                if key in ("Callback", "Keep calling"):
+                    _on_now_line(rows)
             else:
                 st.caption("Nothing here right now.")
+
+        # ---- 👥 On now: who is on shift right now, for handing cases over ----
+        # From the check-in Sheet (schedule + start-of-day form). Shown under
+        # To be followed up and To keep calling, for the lists in that queue.
+        _now_sl = pd.Timestamp.now(tz="UTC").tz_localize(None)        # = Sierra Leone
+        _a_chk, _a_sch, _ = attendance.load_attendance()
+        _a_sch = attendance.clean_schedule(_a_sch, name_map)
+        _onnow = attendance.on_now(_a_sch, attendance.clean_checkins(_a_chk, name_map), _now_sl)
+        _today_lists = sorted({v for v in _a_sch.loc[_a_sch["date"] == _now_sl.date(), "list"]
+                               .astype(str) if v.strip()}, key=_list_key)
+        _tint_now = {attendance.list_key(v): LIST_TINTS[i % len(LIST_TINTS)]
+                     for i, v in enumerate(_today_lists)}
+
+        def _on_now_line(queue_rows):
+            """👥 On now, for the lists in this queue: who is on shift right now
+            (✅ checked in, ⏳ not yet), one coloured group per list."""
+            if _onnow.empty:
+                st.caption("👥 On now: nobody is on shift right now (or no schedule for today).")
+                return
+            keys = (set(queue_rows["assigned_list"].astype(str).map(attendance.list_key))
+                    if "assigned_list" in queue_rows.columns else set())
+            on = _onnow[_onnow["list_key"].isin(keys)] if keys else _onnow
+            if on.empty:
+                st.caption("👥 On now: nobody on shift right now is on these lists.")
+                return
+            groups = []
+            for lk, g in on.groupby("list_key", sort=False):
+                names = " · ".join(("✅ " if c else "⏳ ") + n
+                                   for n, c in zip(g["enumerator"], g["checked_in"]))
+                groups.append(f'<span style="background:{_tint_now.get(lk, "rgba(128,128,128,.15)")};'
+                              f'padding:3px 10px;border-radius:6px;margin:0 6px 6px 0;display:inline-block;'
+                              f'font-size:0.85rem"><b>{g["list"].iloc[0]}</b>: {names}</span>')
+            st.markdown(f'<div style="margin:2px 0 14px"><span style="font-size:0.85rem;opacity:.7;'
+                        f'margin-right:6px">👥 On now ({_now_sl:%H:%M}):</span>' + "".join(groups)
+                        + "</div>", unsafe_allow_html=True)
 
         # Open cases laid out down the page, one section per queue. Review and
         # Keep calling are left out here: they close the tab, after To be
@@ -1282,8 +1323,7 @@ with tab_attend:
         _asg = attendance.assignment(_rows)
         # One colour per call list, the same in both tables, so who is on
         # which list reads at a glance. Translucent: works in either theme.
-        _LIST_TINTS = ["rgba(28,126,214,.18)", "rgba(47,158,68,.20)", "rgba(240,140,0,.20)",
-                       "rgba(132,94,247,.20)", "rgba(12,166,120,.20)", "rgba(230,73,128,.18)"]
+        _LIST_TINTS = LIST_TINTS
         _day_lists = sorted({v for v in _rows["planned_list"].astype(str) if v.strip()}, key=_list_key)
         _tint = {v: _LIST_TINTS[i % len(_LIST_TINTS)] for i, v in enumerate(_day_lists)}
 

@@ -437,3 +437,30 @@ def off_list_calls(day_rows, calls):
     c = c[c["list_key"] != c["planned_list"].map(list_key)]
     return c[["enumerator", "planned_list", "pid", "list", "time", "callcode"]] \
         .rename(columns={"list": "pid_list"}).sort_values(["enumerator", "time"]).reset_index(drop=True)
+
+
+def on_now(schedule, checkins, now):
+    """Who is on shift at `now` (Sierra Leone time, tz-naive): one row per
+    person whose shift today covers the current time. enumerator, list,
+    list_key, shift, checked_in (True/False)."""
+    cols = ["enumerator", "list", "list_key", "shift", "checked_in"]
+    if schedule is None or schedule.empty or pd.isna(now):
+        return pd.DataFrame(columns=cols)
+    s = schedule[schedule["date"] == now.date()].copy()
+    if s.empty:
+        return pd.DataFrame(columns=cols)
+
+    def mins(t):
+        m = re.match(r"\s*(\d{1,2}):(\d{2})", str(t))
+        return int(m[1]) * 60 + int(m[2]) if m else None
+    start = s["shift"].astype(str).str.split("–").str[0].map(mins)
+    end = s["shift"].astype(str).str.split("–").str[-1].map(mins)
+    t = now.hour * 60 + now.minute
+    on = s[[a is not None and b is not None and a <= t < b for a, b in zip(start, end)]].copy()
+    if on.empty:
+        return pd.DataFrame(columns=cols)
+    inn = set(checkins.loc[(checkins["date"] == now.date())
+                           & checkins["arrived"].astype(str).str.strip().ne(""), "enumerator"]) \
+        if checkins is not None and len(checkins) else set()
+    on["checked_in"] = on["enumerator"].isin(inn)
+    return on[cols].drop_duplicates("enumerator").reset_index(drop=True)
