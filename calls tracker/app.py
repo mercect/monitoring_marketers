@@ -1089,14 +1089,14 @@ with tab_action:
                 flag_tiles(_flags)
                 ch.dataframe(style_overdue(yesno(rows), mask=_red),
                              width="stretch", hide_index=True)
-                if key in ("Callback", "Keep calling"):
+                if key in ("Callback", "Keep calling", "Review"):
                     _on_now_line(rows)
             else:
                 st.caption("Nothing here right now.")
 
         # ---- 👥 On now: who is on shift right now, for handing cases over ----
         # From the check-in Sheet (schedule + start-of-day form). Shown under
-        # To be followed up and To keep calling, for the lists in that queue.
+        # To be followed up, To be reviewed and To keep calling, for the lists in that queue.
         _now_sl = pd.Timestamp.now(tz="UTC").tz_localize(None)        # = Sierra Leone
         _a_chk, _a_sch, _ = attendance.load_attendance()
         _a_sch = attendance.clean_schedule(_a_sch, name_map)
