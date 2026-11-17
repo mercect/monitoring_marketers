@@ -68,6 +68,7 @@ HELP = {
     "assigned_at": "When it was assigned.",
     "minutes_waiting": "Minutes since it was assigned (or reactivated) without a call. For assignments, red after 30.",
     "reactivated_at": "When the supervisor sent the case back or reopened it.",
+    "action": "What the Data Team decided: back to work (call it, read the note) or closed (stop calling, update the tracking sheet).",
     "called_at": "First call after the case was sent back.",
     "done_at": "When the supervisor ticked done in To be revised (blank = never).",
     "reactivated_by": "Supervisor who sent the case back or reopened it.",

@@ -882,13 +882,26 @@ with tab_action:
         # A case the supervisor ticked ✔ done leaves this list (it is not new
         # work any more) and goes back to its usual queue until it is called;
         # it is listed under "Done" below for the Data Team.
-        _done = review.actioned(decisions, _react)
+        # Data Team closures are listed too, so the supervisor passes them on
+        # (stop calling, update the tracking sheet) and ticks ✔ done.
+        _now_rev = assign.utc_now()
+        _closes = review.closures_to_pass_on(decisions)
+        _closes["minutes"] = ((_now_rev - pd.to_datetime(_closes["reactivated_at"]))
+                              .dt.total_seconds() // 60) if len(_closes) else []
+        _rev_all = pd.concat(
+            [_react.assign(action="↩ back to work"),
+             _closes.assign(action=lambda x: "⛔ closed " + x["closed_code"].astype(str)
+                                             + ": stop calling")
+             .drop(columns=["closed_code"])],
+            ignore_index=True)
+        _done = review.actioned(decisions, _rev_all)
         _react_todo = _react[~_react["pid"].isin(_done)]
-        st.markdown(f"#### 🔁 To be revised — Data Team checked ({len(_react_todo)})")
-        if _react.empty:
+        _rev_todo = _rev_all[~_rev_all["pid"].isin(_done)]
+        st.markdown(f"#### 🔁 To be revised — Data Team checked ({len(_rev_todo)})")
+        if _rev_all.empty:
             st.caption("Nothing here right now.")
         else:
-            _rv = _react.merge(_open_all[[c for c in ["pid", "assigned_list", "shifts_to_try",
+            _rv = _rev_all.merge(_open_all[[c for c in ["pid", "assigned_list", "shifts_to_try",
                                                       "total_attempts"]
                                           if c in _open_all.columns]], on="pid", how="left")
             # The last REAL call (who, and its code): the latest row is the
@@ -908,7 +921,7 @@ with tab_action:
             _rv = _rv.rename(columns={"callcode": "last_callcode", "enumerator": "last_enumerator"})
             # Just what the enumerator needs: the pid, the supervisor's note, and
             # the last real call (its code and when).
-            _rcols = [c for c in ["pid", "supervisor_note", "last_callcode",
+            _rcols = [c for c in ["pid", "action", "supervisor_note", "last_callcode",
                                   "last_submission_time"] if c in _rv.columns]
             # ✔ done: the supervisor ticks a case once they have acted on the
             # note; saved in the decisions log (followup / actioned), so the
@@ -926,8 +939,9 @@ with tab_action:
             if _todo_rows.empty:
                 st.caption("✔ All done.")
             else:
-                st.caption("Tick a case once the action in the note has been taken, choose who "
-                           "did it, and save. It then leaves this list.")
+                st.caption("Tick a case once the action has been taken (back to work: the "
+                           "enumerator has the note; closed: calling stopped and the tracking "
+                           "sheet updated), choose who did it, and save. It then leaves this list.")
             _ed = ch.data_editor(
                 _todo_rows[["done"] + _rcols], hide_index=True,
                 width="stretch", key=f"revise_editor_{st.session_state['revise_round']}",
@@ -960,7 +974,7 @@ with tab_action:
                         st.rerun()
             _done_rows = _rv[_rv["done"]]
             if len(_done_rows):
-                with st.expander(f"✔ Done ({len(_done_rows)}): back in their usual list until called"):
+                with st.expander(f"✔ Done ({len(_done_rows)})"):
                     ch.dataframe(_done_rows[_rcols + ["done_by", "done_at"]],
                                  width="stretch", hide_index=True)
         # ticked ones go back to their usual queue; the rest wait here

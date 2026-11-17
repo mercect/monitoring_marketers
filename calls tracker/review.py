@@ -468,6 +468,32 @@ def editor_unlock_form():
 
 
 
+
+# Data Team closures the supervisor must pass on (stop calling, update the
+# tracking sheet): a case closed in the dashboard, or an enumerator closure
+# corrected to another code. A plain confirmation changes nothing for the
+# team, so it is not listed.
+CLOSURE_ACTIONS = {"closed", "corrected"}
+
+
+def closures_to_pass_on(decisions):
+    """pid, reactivated_at (= when it was closed, so actioned() can read the
+    done tick), reactivated_by, supervisor_note, closed_code, for pids whose
+    NEWEST entry is a Data Team closure. Reopening it later takes it off."""
+    cols = ["pid", "reactivated_at", "reactivated_by", "supervisor_note", "closed_code"]
+    if decisions is None or decisions.empty:
+        return pd.DataFrame(columns=cols)
+    lp = latest_per_pid(decisions[~decisions["sup_type"].isin(PAPERWORK)])
+    lp = lp[lp["sup_action"].isin(CLOSURE_ACTIONS)
+            & lp["sup_callcode"].astype(str).str.startswith("0_")]
+    if lp.empty:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame({"pid": lp["pid"].values,
+                         "reactivated_at": pd.to_datetime(lp["sup_time"], errors="coerce").values,
+                         "reactivated_by": lp["sup_by"].values,
+                         "supervisor_note": lp["sup_comment"].values,
+                         "closed_code": lp["sup_callcode"].values})[cols]
+
 def actioned(decisions, react):
     """pid -> (who, when) for the pids in `react` (reactivated()) whose
     supervisor ticked "done" AFTER the case was put back to work: an older

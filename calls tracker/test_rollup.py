@@ -497,6 +497,16 @@ def check_active_lists_and_done(fails):
     ok("called after the tick is not", called_before_done(dec([sb, tick]), both("10")).empty)
     ok("called and never ticked is flagged", list(called_before_done(dec([sb]), both("10"))["pid"]) == ["A"])
     ok("not called yet is not flagged", called_before_done(dec([sb]), subs).empty)
+    # Data Team closures to pass on, until ticked
+    from review import closures_to_pass_on
+    cl = ("2026-11-04 08:00:00", "S", "C", "decision", "closed", "0_D", "stop calling", "c1")
+    cf = ("2026-11-04 08:00:00", "S", "F", "validation", "confirmed", "0_WN", "", "f1")
+    rc = ("2026-11-05 08:00:00", "S", "C", "decision", "reopened", "", "again", "c1")
+    tk = ("2026-11-04 09:00:00", "Sup", "C", "followup", "actioned", "", "", "")
+    ok("a closure is listed, a plain confirmation is not",
+       list(closures_to_pass_on(dec([cl, cf]))["pid"]) == ["C"])
+    ok("reopening it takes it off", closures_to_pass_on(dec([cl, rc])).empty)
+    ok("its done tick is read", "C" in actioned(dec([cl, tk]), closures_to_pass_on(dec([cl, tk]))))
     # the tablet holding a partial save: rs_tab_oth, else rs_tab, else rs_tab_id
     from data_io import tablet_column
     t = tablet_column(pd.DataFrame({"rs_tab": ["Tab 1", "other", ""], "rs_tab_oth": ["", "Moto 8", ""],
