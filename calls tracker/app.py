@@ -921,8 +921,12 @@ with tab_action:
             _rv = _rv.rename(columns={"callcode": "last_callcode", "enumerator": "last_enumerator"})
             # Just what the enumerator needs: the pid, the supervisor's note, and
             # the last real call (its code and when).
-            _rcols = [c for c in ["pid", "action", "supervisor_note", "last_callcode",
-                                  "last_submission_time"] if c in _rv.columns]
+            # the call list, for every row (closed cases are not in _open_all)
+            if "assigned_list" in summary.columns:
+                _rv["assigned_list"] = _rv["pid"].map(
+                    summary.drop_duplicates("pid").set_index("pid")["assigned_list"]).fillna("")
+            _rcols = [c for c in ["assigned_list", "pid", "action", "supervisor_note",
+                                  "last_callcode", "last_submission_time"] if c in _rv.columns]
             # ✔ done: the supervisor ticks a case once they have acted on the
             # note; saved in the decisions log (followup / actioned), so the
             # Data Team sees who did it and when. A tick from before a later
