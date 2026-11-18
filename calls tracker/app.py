@@ -1345,7 +1345,7 @@ with tab_attend:
         # The day's assignment: who should be on which list, per shift, and who
         # is in (✅), not in yet (⏳) or calling another list (🟠).
         st.markdown("#### 📋 Assignment")
-        _asg = attendance.assignment(_rows)
+        _day_asg = attendance.assignment(_rows)
         # One colour per call list, the same in both tables, so who is on
         # which list reads at a glance. Translucent: works in either theme.
         _LIST_TINTS = LIST_TINTS
@@ -1360,13 +1360,13 @@ with tab_attend:
             st.markdown(" ".join(f'<span style="background:{c};padding:2px 10px;border-radius:6px;'
                                  f'margin-right:6px;font-size:0.85rem">{v}</span>'
                                  for v, c in _tint.items()), unsafe_allow_html=True)
-        if _asg.empty:
+        if _day_asg.empty:
             st.caption("Nobody is planned on this day.")
         else:
             # grouped by call list (oldest list first), then by shift start
-            _asg["_o"] = _asg["shift"].map(_start_min)
-            _asg["_l"] = _asg["list"].map({v: i for i, v in enumerate(_day_lists)})
-            ch.dataframe(_by_list(_asg.sort_values(["_l", "_o"]).drop(columns=["_o", "_l"]), "list"),
+            _day_asg["_o"] = _day_asg["shift"].map(_start_min)
+            _day_asg["_l"] = _day_asg["list"].map({v: i for i, v in enumerate(_day_lists)})
+            ch.dataframe(_by_list(_day_asg.sort_values(["_l", "_o"]).drop(columns=["_o", "_l"]), "list"),
                          hide_index=True, width="stretch",
                          column_config={"people": st.column_config.Column(
                              help="✅ checked in · ⏳ not checked in · 🟠 calling another list",
