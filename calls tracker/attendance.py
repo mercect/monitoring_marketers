@@ -443,6 +443,49 @@ def off_list_calls(day_rows, calls):
         .rename(columns={"list": "pid_list"}).sort_values(["enumerator", "time"]).reset_index(drop=True)
 
 
+def lists_worked(day, schedule, calls, asg, pid_list, amap=None):
+    """Which call lists each enumerator worked on `day`: a pid counts for a
+    person when it was assigned to them in the dashboard that day, or when
+    they submitted a call on it that day (once, even if both). One row per
+    enumerator x list: enumerator, planned_list, list, pids, called,
+    assigned_only (assigned, no call by them yet that day), on_plan (True /
+    False; None when the person is not on the schedule)."""
+    cols = ["enumerator", "planned_list", "list", "pids", "called", "assigned_only", "on_plan"]
+    sch = schedule[schedule["date"] == day].drop_duplicates("enumerator") \
+        if schedule is not None and len(schedule) else pd.DataFrame(columns=["enumerator", "list"])
+    plan = dict(zip(sch["enumerator"], sch["list"].astype(str)))
+    parts = []
+    if calls is not None and len(calls):
+        parts.append(pd.DataFrame({"enumerator": calls["enumerator"].values,
+                                   "pid": calls["pid"].astype(str).str.strip().values,
+                                   "how": "called"}))
+    if asg is not None and len(asg):
+        a = asg[pd.to_datetime(asg["assigned_at"], errors="coerce").dt.date == day]
+        if len(a):
+            who = (enumerators.canonical(a["assigned_to"], amap).values if amap
+                   else a["assigned_to"].astype(str).str.strip().values)
+            parts.append(pd.DataFrame({"enumerator": who,
+                                       "pid": a["pid"].astype(str).str.strip().values,
+                                       "how": "assigned"}))
+    if not parts:
+        return pd.DataFrame(columns=cols)
+    w = pd.concat(parts, ignore_index=True)
+    w = w[w["enumerator"].astype(str).str.strip() != ""]
+    if w.empty:
+        return pd.DataFrame(columns=cols)
+    # per person and pid: called that day, or only assigned
+    w = w.groupby(["enumerator", "pid"])["how"].agg(lambda s: "called" if "called" in set(s)
+                                                    else "assigned").reset_index()
+    w["list"] = w["pid"].map(pid_list).fillna("").astype(str).str.strip()
+    g = w.groupby(["enumerator", "list"]).agg(
+        pids=("pid", "size"), called=("how", lambda s: int((s == "called").sum()))).reset_index()
+    g["assigned_only"] = g["pids"] - g["called"]
+    g["planned_list"] = g["enumerator"].map(plan).fillna("")
+    g["on_plan"] = [None if not p else list_key(l) == list_key(p)
+                    for p, l in zip(g["planned_list"], g["list"])]
+    return g[cols].sort_values(["enumerator", "list"]).reset_index(drop=True)
+
+
 def on_now(schedule, checkins, now):
     """Who is on shift at `now` (Sierra Leone time, tz-naive): one row per
     person whose shift today covers the current time. enumerator, list,

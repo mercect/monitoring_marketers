@@ -76,6 +76,10 @@ HELP = {
     "called_by": "Who made the first call.",
     "first_call_at": "When the first call was made.",
     # attendance
+    "off_plan": "Pids this person worked that day on a list other than their planned one.",
+    "off_plan_%": "Share of this person's pids that day that were on another list.",
+    "assigned_only": "Assigned to them that day, not called by them yet.",
+    "on_plan": "✅ the planned list · 🟠 another list · 🔵 the person is not on the schedule.",
     "planned_list": "The list the schedule gives this person for the day.",
     "shift": "Planned shift (from the schedule; from the check-in form if not planned).",
     "checked_in": "Filled the start-of-day form that day.",

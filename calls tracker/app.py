@@ -657,13 +657,13 @@ _filter_box.caption(f"Showing **{len(summary_view)}** of {len(summary)} pids.")
 
 # Tab ORDER is set here; the `with tab_*:` bodies further down can stay in any
 # order, Streamlit renders each into its own tab regardless.
-_TAB_NAMES = ["🧾 Calls summary", "🗓️ Attendance"] + (["⏱️ Pace today"] if SHOW_PACE else [])     + ["✅ Active pids", "🗄️ Inactive pids", "💾 Partial saves", "🛂 Supervisor review", "📖 Guide"]
+_TAB_NAMES = ["🧾 Calls summary", "🗓️ Attendance", "🧭 Lists by enumerator"]     + (["⏱️ Pace today"] if SHOW_PACE else []) + ["✅ Active pids", "🗄️ Inactive pids", "💾 Partial saves", "🛂 Supervisor review", "📖 Guide"]
 _tabs = st.tabs(_TAB_NAMES)
 if SHOW_PACE:
-    (tab_summary, tab_attend, tab_pace, tab_action, tab_archive, tab_partial,
+    (tab_summary, tab_attend, tab_lists, tab_pace, tab_action, tab_archive, tab_partial,
      tab_review, tab_guide) = _tabs
 else:
-    (tab_summary, tab_attend, tab_action, tab_archive, tab_partial,
+    (tab_summary, tab_attend, tab_lists, tab_action, tab_archive, tab_partial,
      tab_review, tab_guide) = _tabs
     tab_pace = None
 
@@ -1385,6 +1385,116 @@ with tab_attend:
                        "list. A callback, a case sent back from Supervisor review or a "
                        "pid you assigned can be a good reason.")
             ch.dataframe(_off, hide_index=True, width="stretch")
+
+
+# ============================================================================
+# TAB — 🧭 LISTS BY ENUMERATOR (how far do we deviate from the plan?)
+# For one day, every enumerator x call list: the pids they were assigned in
+# the dashboard that day or called that day, against the list the schedule
+# put them on. Whole roster; the filter at the top does not apply.
+# ============================================================================
+with tab_lists:
+    st.subheader("🧭 Lists by enumerator")
+    st.caption("For each enumerator, the call lists of the pids they worked on the day: "
+               "assigned to them in the dashboard that day, or called by them that day "
+               "(a pid counts once). The planned list comes from the schedule. Whole "
+               "roster: the filter at the top does not apply.")
+    _l_chk, _l_sch, _l_meta = attendance.load_attendance()
+    if not _l_meta["ok"]:
+        st.warning(f"Check-in Sheet: {_l_meta['msg']} Planned lists cannot be shown.")
+    _l_sch = attendance.clean_schedule(_l_sch, name_map)
+    _l_chk = attendance.clean_checkins(_l_chk, name_map)
+    _l_today = pd.Timestamp.now(tz="UTC").date()
+    _l_asg_days = set(pd.to_datetime(_asg["assigned_at"], errors="coerce").dt.date.dropna()) \
+        if len(_asg) else set()
+    _l_call_days = set(pd.to_datetime(subs.get("endtime", pd.Series(dtype=str)), errors="coerce",
+                                      utc=True, format="ISO8601").dt.date.dropna())
+    _l_days = sorted({d for d in set(_l_sch["date"]) | _l_asg_days | _l_call_days | {_l_today}
+                      if d <= _l_today})
+    _l_day = st.selectbox("Day", _l_days, index=len(_l_days) - 1,
+                          format_func=lambda d: f"{d:%a %d %b}" + (" (today)" if d == _l_today else ""),
+                          key="lists_day")
+    _l_pid_list = (summary.drop_duplicates("pid").set_index("pid")["assigned_list"]
+                   if "assigned_list" in summary.columns else pd.Series(dtype=str))
+    _l_calls = attendance.calls_of_day(subs, _l_day, _l_pid_list)
+    _, _l_calls, _ = attendance.align_names(_l_day, _l_sch, _l_chk, _l_calls)
+    _LW = attendance.lists_worked(_l_day, _l_sch, _l_calls, _asg, _l_pid_list, name_map)
+    if _LW.empty:
+        st.info("Nobody was assigned a pid or made a call on this day.")
+    else:
+        _LW["list"] = _LW["list"].replace("", "no list")
+        _pl = _LW[_LW["on_plan"].notna()]
+        _on = int(_pl.loc[_pl["on_plan"] == True, "pids"].sum())     # noqa: E712
+        _offp = int(_pl.loc[_pl["on_plan"] == False, "pids"].sum())  # noqa: E712
+        _unsch = _LW[_LW["on_plan"].isna()]
+        _share = round(100 * _offp / (_on + _offp)) if (_on + _offp) else 0
+        flag_tiles([
+            (_on, "pids on the planned list", GREEN),
+            (_offp, "pids on another list", ORANGE if _offp else GREY),
+            (f"{_share}%", "off plan", RED if _share >= 25 else ORANGE if _share else GREEN,
+             "of the pids worked by scheduled people"),
+            (int(_pl.loc[_pl["on_plan"] == False, "enumerator"].nunique()),   # noqa: E712
+             "people off plan", ORANGE, "worked at least one pid on another list"),
+            (int(_unsch["enumerator"].nunique()), "not on the schedule", BLUE,
+             f"{int(_unsch['pids'].sum())} pids"),
+        ])
+
+        # One row per enumerator, one column per list. A cell: pids worked on
+        # that list, "+ n📋" = assigned that day but not called by them yet.
+        _lists = sorted(set(_LW["list"]) - {"no list"}, key=_list_key) \
+            + (["no list"] if "no list" in set(_LW["list"]) else [])
+        _cell = {(r.enumerator, r.list): (f"{r.called}" if not r.assigned_only else
+                                          f"{r.called} + {r.assigned_only}📋" if r.called else
+                                          f"{r.assigned_only}📋")
+                 for r in _LW.itertuples()}
+        _people = _LW.groupby("enumerator").agg(
+            planned_list=("planned_list", "first"), pids=("pids", "sum")).reset_index()
+        _offn = _LW[_LW["on_plan"] == False].groupby("enumerator")["pids"].sum()  # noqa: E712
+        _people["off_plan"] = _people["enumerator"].map(_offn).fillna(0).astype(int)
+        _people["off_plan_%"] = [
+            f"{round(100 * o / n)}%" if p and n else "" for p, o, n in
+            zip(_people["planned_list"], _people["off_plan"], _people["pids"])]
+        for _c in _lists:
+            _people[_c] = [_cell.get((n, _c), "") for n in _people["enumerator"]]
+        # most off plan first, then the unscheduled, then everyone on plan
+        _people["_o"] = [(0 if o else 2) if p else 1 for p, o in
+                         zip(_people["planned_list"], _people["off_plan"])]
+        _people = _people.sort_values(["_o", "off_plan", "enumerator"], ascending=[True, False, True]) \
+            .drop(columns=["_o"]).reset_index(drop=True)
+        _people["off_plan"] = [str(o) if p else "" for p, o in
+                               zip(_people["planned_list"], _people["off_plan"])]
+        _people["planned_list"] = _people["planned_list"].replace("", "— not scheduled")
+        _people = _people[["enumerator", "planned_list", "pids", "off_plan", "off_plan_%"] + _lists]
+
+        # green = the planned list, orange = another list, blue = not scheduled
+        def _dev_style(row):
+            out = []
+            for c in row.index:
+                if c in _lists and row[c]:
+                    if row["planned_list"].startswith("—"):
+                        out.append("background-color: rgba(28,126,214,.15)")
+                    elif attendance.list_key(c) == attendance.list_key(row["planned_list"]):
+                        out.append("background-color: rgba(46,160,67,.22)")
+                    else:
+                        out.append("background-color: rgba(240,140,0,.28)")
+                else:
+                    out.append("")
+            return out
+        st.markdown(" ".join(
+            f'<span style="background:{c};padding:2px 10px;border-radius:6px;margin-right:6px;'
+            f'font-size:0.85rem">{t}</span>' for t, c in [
+                ("planned list", "rgba(46,160,67,.22)"), ("another list", "rgba(240,140,0,.28)"),
+                ("not on the schedule", "rgba(28,126,214,.15)")]), unsafe_allow_html=True)
+        ch.dataframe(_people.style.apply(_dev_style, axis=1), hide_index=True, width="stretch",
+                     column_config={c: st.column_config.Column(
+                         help=f"pids on {c} worked that day. '+ n📋' = assigned that day, "
+                              "not called by them yet.") for c in _lists})
+        st.caption("A pid on another list can be fine: a callback, a case sent back from "
+                   "Supervisor review, or a pid you assigned on purpose.")
+        with st.expander("Per enumerator and list (long table)"):
+            ch.dataframe(_LW.assign(on_plan=_LW["on_plan"].map(
+                {True: "✅ planned", False: "🟠 other"}).fillna("🔵 not scheduled")),
+                hide_index=True, width="stretch")
 
 
 # ============================================================================

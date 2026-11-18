@@ -124,7 +124,7 @@ footer { color: var(--muted); font-size: 13px; }
       <li><a href="#codes">Callcodes</a></li>
       <li><a href="#summary">Calls summary</a></li>
       <li><a href="#attendance">Attendance</a></li>
-      <li><a href="#pace">Pace today</a></li>
+      <li><a href="#lists">Lists by enumerator</a></li>
       <li><a href="#active">Active pids</a></li>
       <li><a href="#inactive">Inactive pids</a></li>
       <li><a href="#partial">Partial saves</a></li>
@@ -265,6 +265,12 @@ footer { color: var(--muted); font-size: 13px; }
         <li><strong>Calls on another list</strong> are listed call by call under the table. A callback, a case sent back from Supervisor review or a pid you assigned can be a good reason, so check before acting.</li>
         <li>The list of a call is the <code>assigned_list</code> of the pid called. To change someone's list, change the <em>schedule</em> tab; the dashboard reads it again within 5 minutes.</li>
       </ul>
+    </section>
+    <section id="lists">
+      <h2>🧭 Lists by enumerator</h2>
+      <p>How far the day moved away from the plan. Pick a day: each enumerator gets one row and each call list one column. A cell is the number of pids on that list the person worked that day, either <strong>called</strong> by them or <strong>assigned</strong> to them in the dashboard that day (a pid counts once). <em>2 + 3📋</em> means 2 called and 3 assigned but not called by them yet.</p>
+      <p>Colours: 🟩 the list the schedule planned for them, 🟧 another list, 🟦 the person is not on the schedule that day. <code>off_plan</code> and <code>off_plan_%</code> count the pids on other lists; the people most off plan come first. The tiles add it up: pids on the planned list, pids on another list, the % off plan, and how many people worked off plan or without being scheduled.</p>
+      <p>Off plan is not always wrong: a callback, a case sent back from Supervisor review or a pid you assigned on purpose can be on another list. The long table under it lists every person and list. Whole roster: the filter at the top does not apply.</p>
     </section>
 
     <section id="pace">

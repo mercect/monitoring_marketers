@@ -600,6 +600,28 @@ def check_pace(fails):
        pace.assign_lag(asg, calls, now) == {"median_min": 20, "called": 1, "waiting": 1})
 
 
+def check_lists_worked(fails):
+    """attendance.lists_worked: pids per enumerator x list, assigned or called."""
+    import datetime as dt
+    import attendance as at
+    ok = lambda name, cond: None if cond else fails.append(f"[lists by enumerator] {name}")
+    day = dt.date(2026, 11, 17)
+    sch = pd.DataFrame({"date": [day], "enumerator": ["Ann"], "list": ["12Nov-D4"]})
+    calls = pd.DataFrame({"enumerator": ["Ann", "Ann", "Ann", "Bob"],
+                          "pid": ["a", "a", "x", "b"]})
+    asg = pd.DataFrame({"pid": ["a", "c", "z"], "assigned_to": ["Ann", "Ann", "Ann"],
+                        "assigned_at": pd.to_datetime(["2026-11-17 08:00", "2026-11-17 09:00",
+                                                       "2026-11-16 09:00"])})
+    pl = pd.Series({"a": "12Nov-D4", "c": "12Nov-D4", "x": "03Nov-D5", "b": "12Nov-D4", "z": "12Nov-D4"})
+    W = at.lists_worked(day, sch, calls, asg, pl).set_index(["enumerator", "list"])
+    ok("planned list: a called + c assigned only, counted once each",
+       W.loc[("Ann", "12Nov-D4"), ["pids", "called", "assigned_only"]].tolist() == [2, 1, 1]
+       and W.loc[("Ann", "12Nov-D4"), "on_plan"] == True)   # noqa: E712
+    ok("another list is off plan", W.loc[("Ann", "03Nov-D5"), "on_plan"] == False)  # noqa: E712
+    ok("not on the schedule: on_plan is None", W.loc[("Bob", "12Nov-D4"), "on_plan"] is None)
+    ok("an assignment made on another day is not counted", W["pids"].sum() == 4)
+
+
 def check_baseline(s, fails):
     got = {"rows": len(s), "completed": int((s["is_complete"] == 1).sum()),
            "ever_attempted": int(s["ever_attempted"].sum()),
@@ -656,6 +678,7 @@ def main():
     check_lists_due(fails)
     check_active_lists_and_done(fails)
     check_pace(fails)
+    check_lists_worked(fails)
     print("supervisor review rules + enumerator names + assignments + reopen + attendance: checked")
 
     # --- fixture: invariants + baseline + determinism -------------------------
