@@ -291,6 +291,11 @@ def _name_score(a, b):
     short, long_ = sorted((ta, tb), key=len)
     if 2 <= len(short) < len(long_) and long_[:len(short)] == short:
         return 0.9
+    # one word typed for the whole name: 'Adams' ~ 'Issa Adams Kamara'. Only
+    # joined when a single planned person has that word (align_names drops
+    # ties, so 'Koroma' with two Koromas planned matches nobody).
+    if len(short) == 1 and len(long_) >= 2 and len(short[0]) >= 4 and short[0] in long_:
+        return 0.7
     if len(ta) < 2 or len(tb) < 2 or ta[0][0] != tb[0][0] or ta[-1][0] != tb[-1][0]:
         return 0.0                       # 'Salieu' is not 'Alieu'
     first = SM(None, ta[0], tb[0]).ratio()
