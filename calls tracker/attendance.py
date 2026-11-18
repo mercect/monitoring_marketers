@@ -506,6 +506,12 @@ def on_now(schedule, checkins, now):
     on = s[[a is not None and b is not None and a <= t < b for a, b in zip(start, end)]].copy()
     if on.empty:
         return pd.DataFrame(columns=cols)
+    # a check-in typed with another spelling ('Mariama M Sesay' for 'Mariama
+    # Musu Sesay', 'Issa Adams' for 'Issa Adams Kamara') counts for the
+    # planned person, exactly as in the Attendance tab
+    if checkins is not None and len(checkins):
+        checkins, _, _ = align_names(now.date(), schedule, checkins,
+                                     pd.DataFrame(columns=["enumerator", "pid"]))
     inn = set(checkins.loc[(checkins["date"] == now.date())
                            & checkins["arrived"].astype(str).str.strip().ne(""), "enumerator"]) \
         if checkins is not None and len(checkins) else set()

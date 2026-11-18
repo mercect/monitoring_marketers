@@ -620,6 +620,13 @@ def check_lists_worked(fails):
     ok("another list is off plan", W.loc[("Ann", "03Nov-D5"), "on_plan"] == False)  # noqa: E712
     ok("not on the schedule: on_plan is None", W.loc[("Bob", "12Nov-D4"), "on_plan"] is None)
     ok("an assignment made on another day is not counted", W["pids"].sum() == 4)
+    # On now: a check-in typed with a close spelling counts for the planned person
+    sch2 = pd.DataFrame({"date": [day, day], "enumerator": ["Mariama Musu Sesay", "Issa Adams Kamara"],
+                         "list": "L", "list_key": "L", "shift": "08:00–15:00"})
+    chk2 = at.clean_checkins(pd.DataFrame({"today": "17-Nov-2026", "enum_name": ["Mariama M Sesay", "Issa Adams"],
+                                           "sod_arrival_hhmm": ["08:05", "08:10"]}), {})
+    ok("on now: close spellings on the check-in form count as checked in",
+       at.on_now(sch2, chk2, pd.Timestamp("2026-11-17 10:55"))["checked_in"].all())
 
 
 def check_baseline(s, fails):
