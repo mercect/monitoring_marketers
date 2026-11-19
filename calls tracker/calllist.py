@@ -62,11 +62,16 @@ def lists_due(never_called, today, lookback=3):
     cols = ["assigned_list", "due", "left"]
     if never_called is None or never_called.empty:
         return pd.DataFrame(columns=cols)
-    d = never_called.assign(due=first_call_date(never_called).values)
-    d = d[d["due"].notna()]
-    d = d[(d["due"] <= today) & (d["due"] >= today - pd.Timedelta(days=lookback))]
-    if d.empty:
+    # Compare as Timestamps: the dates come back as plain objects, or as
+    # datetime64 when none of them is known, and datetime64 cannot be
+    # compared with a date (TypeError: Invalid comparison).
+    due = pd.to_datetime(pd.Series(first_call_date(never_called).values, index=never_called.index),
+                         errors="coerce")
+    t = pd.Timestamp(today).normalize()
+    keep = due.notna() & (due <= t) & (due >= t - pd.Timedelta(days=lookback))
+    if not keep.any():
         return pd.DataFrame(columns=cols)
+    d = never_called[keep].assign(due=due[keep].dt.date)
     out = (d.groupby(["assigned_list", "due"]).size().rename("left").reset_index())
     return out.sort_values(["due", "assigned_list"], ascending=[False, True]).reset_index(drop=True)[cols]
 

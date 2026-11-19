@@ -446,6 +446,8 @@ def check_lists_due(fails):
     fc = list(first_call_date(r))
     ok("12Nov-D4 is first called on 16 Nov", fc[0] == dt.date(2026, 11, 16))
     ok("12Nov-D5 on 17 Nov, 13Nov-D4 on 17 Nov", fc[2] == fc[3] == dt.date(2026, 11, 17))
+    blank = pd.DataFrame({"pid": ["x"], "date_recruited": [""], "assigned_list": [""]})
+    ok("no known list day: empty, no crash", lists_due(blank, dt.date(2026, 11, 19)).empty)
     d16 = lists_due(r, dt.date(2026, 11, 16))
     ok("on the 16th only 12Nov-D4, 2 left", list(d16["assigned_list"]) == ["12Nov-D4"] and int(d16["left"].iloc[0]) == 2)
     d17 = lists_due(r, dt.date(2026, 11, 17))
