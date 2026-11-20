@@ -216,7 +216,7 @@ footer { color: var(--muted); font-size: 13px; }
           <tr><td><strong>⏰ To follow up</strong></td><td>overdue (call first) · due in the next hour · later</td><td>⏰ To be followed up</td></tr>
           <tr><td><strong>▶️ To resume</strong></td><td>partial saves to resume · with no tablet id (ask the enumerator who last submitted which tablet holds it)</td><td>▶️ To be resumed</td></tr>
           <tr><td><strong>🆕 To assign</strong></td><td>left on each list due today (e.g. <em>left on 12Nov-D4</em> on 16 Nov) · a list from the last 3 days that still has pids left, in red (overdue) · skipped in list order (assign now) · assigned, not called in 30 min</td><td>🆕 To be assigned</td></tr>
-          <tr><td><strong>📵 Keep trying</strong></td><td>to keep calling · hard to reach (for the supervisor)</td><td>📵 To keep calling · 🔎 To be reviewed</td></tr>
+          <tr><td><strong>📵 Keep trying</strong></td><td>to keep calling · hard to reach (for the supervisor)</td><td>📵 To keep calling (🔎 flagged)</td></tr>
         </tbody>
       </table></div>
       <ul>
@@ -289,7 +289,7 @@ footer { color: var(--muted); font-size: 13px; }
     <section id="active">
       <h2>✅ Active pids — the work queues</h2>
       <p>Every open pid sits in one queue. Work through them from the top. Each table starts with <code>assigned_list</code> (the day-4 or day-5 call list), then the pid. If the supervisor has left a note on a pid, it appears as <code>supervisor_note</code> right after the pid: read it before calling.</p>
-      <p><strong>👥 On now:</strong> under ⏰ <em>To be followed up</em>, 🔎 <em>To be reviewed</em> and 📵 <em>To keep calling</em>, a line shows who is on shift right now for the lists in that queue (✅ checked in, ⏳ not yet), one colour per list as in Attendance, so you know who you can hand a case to. It comes from the check-in Sheet's schedule.</p>
+      <p><strong>👥 On now:</strong> under ⏰ <em>To be followed up</em> and 📵 <em>To keep calling</em>, a line shows who is on shift right now for the lists in that queue (✅ checked in, ⏳ not yet), one colour per list as in Attendance, so you know who you can hand a case to. It comes from the check-in Sheet's schedule.</p>
 
       <div class="panel queue" style="--qc: var(--red)">
         <h3>🔁 To be revised — Data Team checked</h3>
@@ -301,7 +301,7 @@ footer { color: var(--muted); font-size: 13px; }
       <div class="panel queue" style="--qc: var(--red)">
         <h3>⏰ To be followed up</h3>
         <div class="meta">Codes <code>2_D</code> <code>2_OC</code> <code>2_SC</code> <code>3_SC</code> <code>4_SC</code></div>
-        <p>A callback time was agreed, or the call dropped and needs chasing. Overdue callbacks are red and sit at the top, then the soonest due. A callback stays here however many times it has been tried, because a time was promised to the respondent. It never moves to <em>To be reviewed</em>.</p>
+        <p>A callback time was agreed, or the call dropped and needs chasing. Overdue callbacks are red and sit at the top, then the soonest due. A callback stays here however many times it has been tried, because a time was promised to the respondent. It is never flagged hard to reach.</p>
         <div class="flags"><div class="flag red"><b>3</b><span>overdue</span></div><div class="flag orange"><b>1</b><span>due in the next hour</span></div></div>
         <div class="tablebox"><table>
           <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
@@ -345,18 +345,12 @@ footer { color: var(--muted); font-size: 13px; }
         <p>Pids assigned in the dashboard that nobody has called yet, longest waiting first, with who they were given to and how many minutes ago. <strong>Red after 30 minutes:</strong> each enumerator takes one case at a time, so a case should be called well within that.</p>
         <div class="flags"><div class="flag red"><b>1</b><span>not called within 30 min</span></div></div>
       </div>
-      <div class="panel queue" style="--qc: var(--grey)">
-        <h3>🔎 To be reviewed (hard to reach)</h3>
-        <div class="meta">4 or more of the 5 shift windows tried, or more than 8 attempts</div>
-        <p>Open pids worked hard with nothing to show, and still not complete. The supervisor decides whether to keep trying or close them. Callbacks never land here. The table shows the effort so far: attempts, whether the respondent ever picked up, and how many calls dropped, were rescheduled, went unanswered or found the phone off. <code>comments</code> is the reason given, then the final comment; <code>last_contact_date</code> says <em>never reached</em> when nobody has spoken to the respondent.</p>
-        <div class="flags"><div class="flag red"><b>2</b><span>more than 8 attempts</span></div><div class="flag orange"><b>3</b><span>4+ shifts tried</span></div></div>
-      </div>
-
       <div class="panel queue" style="--qc: var(--orange)">
-        <h3>📵 To keep calling</h3>
-        <div class="meta">Codes <code>2_IN</code> <code>2_NA</code> <code>2_OF</code> <code>2_WN</code></div>
+        <h3>📵 To keep calling (🔎 = hard to reach)</h3>
+        <div class="meta">Codes <code>2_IN</code> <code>2_NA</code> <code>2_OF</code> <code>2_WN</code>, plus the hard to reach</div>
         <p>No answer or phone off, or a wrong number or wrong person with other numbers still to try. The list starts with the fewest attempts; within the same number of attempts, it follows the <strong>call-list order</strong> (<code>assigned_list</code>, then <code>call_order</code>). Take the top row.</p>
-        <div class="flags"><div class="flag orange"><b>12</b><span>1 attempt only</span></div></div>
+        <p><strong>🔎 Hard to reach</strong> pids are in this same list (there is no separate <em>To be reviewed</em> queue any more). The <code>hard_to_reach</code> column says why: <em>4+/5 shifts</em> (4 or more of the 5 shift windows tried) and/or <em>&gt;8 attempts</em>, with no completion. Callbacks are never flagged. They are sorted with everyone else (fewest attempts first); the supervisor decides in Supervisor review whether to keep trying or close them.</p>
+        <div class="flags"><div class="flag orange"><b>12</b><span>1 attempt only</span></div><div class="flag orange"><b>5</b><span>🔎 hard to reach</span></div><div class="flag red"><b>2</b><span>more than 8 attempts</span></div><div class="flag orange"><b>3</b><span>4+ shifts tried</span></div></div>
         <p>After <code>call_order</code> come the shift windows not tried yet (<code>shifts_to_try</code>) and whether the respondent ever picked up (<code>ever_picked_up</code>). Then the totals: all calls (<code>total_attempts</code>) and how many ended in no answer (<code>times_noanswer</code>), phone off (<code>times_off</code>), a reschedule (<code>times_rescheduled</code>) or a drop (<code>times_dropped</code>). Someone who has picked up before but keeps rescheduling needs a different approach from someone whose phone is always off.</p>
         <p>The last three columns describe the last call: <code>last_callcode</code>, <code>last_enumerator</code> and <code>last_comment</code>.</p>
         <p><code>numbers_wrong</code> is the most numbers any single call found wrong. The form counts per call, not in total, so this never counts the same wrong number twice.</p>
@@ -410,7 +404,7 @@ footer { color: var(--muted); font-size: 13px; }
         <tbody>
           <tr><td>🛑 <strong>Closed by enumerator (0_)</strong></td><td>Every <code>0_</code> closure an enumerator logged that has not been validated yet. One closed with a supervisor-only code (<code>0_NA</code> <code>0_OF</code> <code>0_D</code> <code>0_SC</code>) is marked ⚠️.</td></tr>
           <tr><td>▶️ <strong>To be resumed (partial saved)</strong></td><td>Every open pid in that queue of ✅ Active pids.</td></tr>
-          <tr><td>🔎 <strong>To be reviewed</strong></td><td>Every open pid in that queue (hard to reach).</td></tr>
+          <tr><td>🔎 <strong>To be reviewed</strong></td><td>Every open pid flagged 🔎 hard to reach in 📵 To keep calling.</td></tr>
         </tbody>
       </table></div>
       <p>Completed interviews (<code>1</code>) are not in this list; they will get their own check later. The buttons at the top filter by group, with how many are waiting in each. The list itself stays folded: open <strong>📋 Show the list</strong> and click a row to review that pid below, or pick it in the <em>Pid</em> box. The oldest last activity comes first in each group.</p>

@@ -52,6 +52,8 @@ HELP = {
     "numbers_wrong": "The most numbers any single call found wrong (the form counts per call).",
     "numbers_tried_of_available": "Phone numbers tried out of those the respondent gave.",
     "days_open": "Days since the first submission for this pid.",
+    "hard_to_reach": "🔎 = hard to reach: 4+ of 5 shifts tried and/or more than 8 attempts "
+                     "(or a code that needs a supervisor look). Blank = an ordinary case.",
     "review_reason": "Why the pid is hard to reach: 4+ of 5 shifts tried and/or more than 8 attempts.",
     # partial saves
     "active_partialsave": "Is a half-finished interview still held on a tablet?",

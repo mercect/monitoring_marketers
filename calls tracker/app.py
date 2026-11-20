@@ -204,7 +204,13 @@ def queue_flags(key, rows, red=None):
         return [(int(red.sum()) if red is not None else 0, "overdue", RED),
                 (int(when.eq("within 1h").sum()), "due in the next hour", ORANGE)]
     if key == "Keep calling":
-        return [(int((num("total_attempts") <= 1).sum()), "1 attempt only", ORANGE)]
+        hard = rows.get("hard_to_reach", pd.Series("", index=rows.index)).astype(str).ne("")
+        return [(int((num("total_attempts") <= 1).sum()), "1 attempt only", ORANGE),
+                (int(hard.sum()), "🔎 hard to reach", ORANGE),
+                (int((num("total_attempts") > ATTEMPTS_MAX).sum()),
+                 f"more than {ATTEMPTS_MAX} attempts", RED),
+                (int((num("shifts_covered_n") >= SHIFTS_MOST).sum()),
+                 f"{SHIFTS_MOST}+ shifts tried", ORANGE)]
     if key == "Resume":
         held = num("active_partialsave") == 1
         tab = rows.get("tab_id", pd.Series("", index=rows.index)).fillna("").astype(str).str.strip()
@@ -778,7 +784,7 @@ with tab_summary:
     _category("📵 Keep trying", n_keep + n_review,
               [(n_keep, "to keep calling", BLUE),
                (n_review, "hard to reach", ORANGE, "supervisor")],
-              "📵 To keep calling · 🔎 To be reviewed")
+              "📵 To keep calling")
     if SHOW_WHATSAPP:
         _category("📱 WhatsApp", n_whatsapp, [(n_whatsapp, "to message", BLUE)], "📱 WhatsApp")
     st.caption("Top to bottom = priority. The lists are in ✅ Active pids.")
@@ -1005,9 +1011,10 @@ with tab_action:
 
         BUCKETS = [
             ("Callback", "⏰ To be followed up"),
-            ("Keep calling", "📵 To keep calling"),
             ("Resume", "▶️ To be resumed (partial saved)"),
-            ("Review", "🔎 To be reviewed (hard to reach)"),
+            # 🔎 hard to reach (bucket Review) is shown inside To keep calling,
+            # flagged in hard_to_reach: the same pile, called the same way.
+            ("Keep calling", "📵 To keep calling"),
         ]
         COLS = {
             # History COUNTS, not ever-flags: for a callback the useful question is
@@ -1036,7 +1043,7 @@ with tab_action:
             # whether they ever picked up, then the effort as TOTALS, then the
             # last call: its code, who made it, and the comment.
             # callcode / enumerator are shown as last_callcode / last_enumerator.
-            "Keep calling": ["pid", "call_order", "shifts_to_try",
+            "Keep calling": ["pid", "call_order", "hard_to_reach", "shifts_to_try",
                              "ever_picked_up", "total_attempts", "times_noanswer",
                              "times_off", "times_rescheduled", "times_dropped",
                              "numbers_wrong", "last_submission_time",
@@ -1075,8 +1082,18 @@ with tab_action:
             # Resume reads its non-exclusive overlay (held partials + 3_D);
             # every other queue reads the exclusive bucket. Callbacks are never
             # escalated, so the Callback bucket is already the whole list.
-            rows = (open_cases[open_cases["resume_queue"] == 1].copy() if key == "Resume"
-                    else open_cases[open_cases["action_bucket"] == key].copy())
+            if key == "Resume":
+                rows = open_cases[open_cases["resume_queue"] == 1].copy()
+            elif key == "Keep calling":
+                # To keep calling + the hard to reach (bucket Review), one pile;
+                # hard_to_reach says why a pid is flagged.
+                rows = open_cases[open_cases["action_bucket"].isin(["Keep calling", "Review"])].copy()
+                _rr = rows.get("review_reason", pd.Series("", index=rows.index)).fillna("").astype(str)
+                _is_rev = rows["action_bucket"].eq("Review")
+                rows["hard_to_reach"] = [("🔎 " + (r or "check the code")) if v else ""
+                                         for r, v in zip(_rr, _is_rev)]
+            else:
+                rows = open_cases[open_cases["action_bucket"] == key].copy()
             if key == "Callback":
                 # Overdue first, then soonest due. Sorted on the PARSED time, not
                 # the raw string: callback_due is free text like "2026-09-02 8:00",
@@ -1166,11 +1183,11 @@ with tab_action:
                         f'margin-right:6px">👥 On now ({_now_sl:%H:%M}):</span>' + "".join(groups)
                         + "</div>", unsafe_allow_html=True)
 
-        # Open cases laid out down the page, one section per queue. Review and
-        # Keep calling are left out here: they close the tab, after To be
-        # assigned and Assigned, not called yet.
+        # Open cases laid out down the page, one section per queue. Keep
+        # calling (with the hard to reach) is left out here: it closes the tab,
+        # after To be assigned and Assigned, not called yet.
         for key, label in BUCKETS:
-            if key not in ("Keep calling", "Review"):
+            if key != "Keep calling":
                 _render_queue(key, label)
 
         # non-exclusive overlay: WhatsApp outreach (these pids also appear above)
@@ -1285,10 +1302,9 @@ with tab_action:
         ch.dataframe(style_rows(_w[_wcols], red=_w["minutes_waiting"] > assign.LATE_MINUTES),
                      width="stretch", hide_index=True)
 
-    # 🔎 To be reviewed, then 📵 To keep calling: the last queues on the page.
+    # 📵 To keep calling, with the hard to reach flagged: the last queue on the page.
     if not cases.empty:
-        _render_queue("Review", "🔎 To be reviewed (hard to reach)")
-        _render_queue("Keep calling", "📵 To keep calling")
+        _render_queue("Keep calling", "📵 To keep calling (🔎 = hard to reach)")
 
     with st.expander(f"See raw submissions ({len(subs)} rows, one per call attempt)"):
         ch.dataframe(subs, width="stretch", hide_index=True)
