@@ -971,36 +971,72 @@ with tab_action:
                 st.caption("Tick a case once the action has been taken (back to work: the "
                            "enumerator has the note; closed: calling stopped and the tracking "
                            "sheet updated), choose who did it, and save. It then leaves this list.")
-            _ed = ch.data_editor(
-                _todo_rows[["done"] + _rcols], hide_index=True,
-                width="stretch", key=f"revise_editor_{st.session_state['revise_round']}",
-                disabled=_rcols,
-                column_config={"done": st.column_config.CheckboxColumn(
-                    "✔ done", width="small",
-                    help="Tick once the supervisor has taken the action in the note.")})
-            _new = _ed[_ed["done"] & ~_ed["pid"].isin(_done)]
-            if len(_new):
+            if not _todo_rows.empty:
+                # A tick that does not count: made before the case was put back to
+                # work again (a newer instruction). Said on the row, so a case that
+                # "keeps coming back" shows why.
+                _ticks = decisions[decisions["sup_type"] == "followup"].copy()
+                _ticks["_t"] = pd.to_datetime(_ticks["sup_time"], errors="coerce")
+                _ticks = _ticks.sort_values("_t").drop_duplicates("pid", keep="last").set_index("pid")
+                _since = (_rev_all.set_index("pid")["run_start"] if "run_start" in _rev_all.columns
+                          else pd.Series(dtype="datetime64[ns]"))
+                _since = _since[~_since.index.duplicated()]
+
+                def _why_back(p):
+                    if p not in _ticks.index:
+                        return ""
+                    t, b = _ticks.at[p, "_t"], _ticks.at[p, "sup_by"]
+                    s_ = _since.get(p, pd.NaT)
+                    when = f"{s_:%d %b %H:%M}" if pd.notna(s_) else "later"
+                    return f"ticked by {b} {t:%d %b %H:%M}, then put back to work again {when}"
+                _todo_rows = _todo_rows.assign(earlier_tick=[_why_back(p) for p in _todo_rows["pid"]])
+                _show_cols = _rcols + (["earlier_tick"] if _todo_rows["earlier_tick"].ne("").any() else [])
+                # One form: the ticks, who did it and the save go together in one
+                # click. Before, choosing "Done by" re-ran the page first, which
+                # could drop the ticks, so the save never happened.
                 _sups = enumerators.supervisors(enum_roster)
-                _by = st.selectbox("Done by", _sups, index=None, key="revise_by",
-                                   placeholder="Who took the action (goes into the log)") or ""
                 _problem = review.writer_problem()
                 if _problem:
                     st.info(f"Saving is off: {_problem}")
-                if st.button(f"✔ Mark {len(_new)} as done", type="primary",
-                             disabled=bool(_problem) or not _by.strip()):
-                    try:
-                        review.append_decisions([
-                            {"sup_time": review.now_text(), "sup_by": _by.strip(), "pid": p,
-                             "sup_type": "followup", "sup_action": "actioned"}
-                            for p in _new["pid"]])
-                    except Exception as e:
-                        st.error(f"Not saved — {e}")
+                with st.form(f"revise_form_{st.session_state['revise_round']}", border=False):
+                    _ed = ch.data_editor(
+                        _todo_rows[["done"] + _show_cols], hide_index=True,
+                        width="stretch", key=f"revise_editor_{st.session_state['revise_round']}",
+                        disabled=_show_cols,
+                        column_config={"done": st.column_config.CheckboxColumn(
+                            "✔ done", width="small",
+                            help="Tick once the supervisor has taken the action in the note."),
+                            "earlier_tick": st.column_config.Column(
+                                "⚠ ticked before", help="A tick made before the case was put back "
+                                "to work again does not count: tick it again once the new "
+                                "instruction is passed on.")})
+                    _fc1, _fc2 = st.columns([2, 1])
+                    _by = _fc1.selectbox("Done by", _sups, index=None, key="revise_by",
+                                         placeholder="Who took the action (goes into the log)") or ""
+                    _go = _fc2.form_submit_button("✔ Mark ticked as done", type="primary",
+                                                  disabled=bool(_problem) or _todo_rows.empty)
+                if _go:
+                    _new = _ed[_ed["done"] & ~_ed["pid"].isin(_done)]
+                    if _new.empty:
+                        st.warning("Tick at least one case first.")
+                    elif not _by.strip():
+                        st.warning("Choose who took the action (Done by), then save again. "
+                                   "Your ticks are still there.")
                     else:
-                        st.session_state["revise_round"] += 1
-                        st.session_state.pop("revise_by", None)
-                        st.session_state["revise_flash"] = f"✔ Marked {len(_new)} as done."
-                        st.cache_data.clear()
-                        st.rerun()
+                        try:
+                            review.append_decisions([
+                                {"sup_time": review.now_text(), "sup_by": _by.strip(), "pid": p,
+                                 "sup_type": "followup", "sup_action": "actioned"}
+                                for p in _new["pid"]])
+                        except Exception as e:
+                            st.error(f"Not saved — {e}")
+                        else:
+                            st.session_state["revise_round"] += 1
+                            st.session_state.pop("revise_by", None)
+                            st.session_state["revise_flash"] = (f"✔ Marked {len(_new)} as done: "
+                                                                + ", ".join(_new["pid"]))
+                            st.cache_data.clear()
+                            st.rerun()
             _done_rows = _rv[_rv["done"]]
             if len(_done_rows):
                 with st.expander(f"✔ Done ({len(_done_rows)})"):
