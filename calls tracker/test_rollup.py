@@ -333,6 +333,21 @@ def check_reopen(fails):
     sf = summarize(frame_from_attempts(apply_decisions(ev, fix)), apply_decisions(ev, fix)).set_index("pid")
     ok("a corrected complete takes the 0_ code", sf.at["C", "current_callcode"] == "0_IN")
     ok("a corrected final closure takes the new code", sf.at["F", "current_callcode"] == "0_IN")
+    # Open cases (resume / hard to reach): a saved decision takes them off
+    # To validate; before, keep trying left them there for good.
+    oc2 = pd.DataFrame({"pid": ["O", "R"], "action_bucket": ["Review", "Resume"],
+                        "resume_queue": [0, 1]})
+    ok = lambda name, cond: None if cond else fails.append(f"[decided open] {name}")
+    t0 = rt.to_validate(sv, oc2, dv, status_keys(ev))
+    ok("undecided open cases are listed", {"O", "R"} <= set(t0["pid"]))
+    kt = pd.concat([dv, dec([("2026-11-04 08:00:00", "S", "O", "decision", "keep_trying", "", "evenings", "o1"),
+                             ("2026-11-04 08:05:00", "S", "R", "assignment", "assigned", "", "", "")])],
+                   ignore_index=True)
+    t1 = rt.to_validate(sv, oc2, kt, status_keys(ev))
+    ok("keep trying takes it off the list", "O" not in set(t1["pid"]))
+    ok("paperwork (an assignment) does not", "R" in set(t1["pid"]))
+    ok("it is still editable in Everything else",
+       "O" in set(rt.everything_else(sv, oc2, t1, status_keys(ev), ev)["pid"]))
 
 
 def check_attendance(fails):

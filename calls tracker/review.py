@@ -420,6 +420,16 @@ def notes_by_pid(decisions):
             zip(lp["pid"], lp["sup_comment"], lp["sup_time"])}
 
 
+def decided_open(decisions):
+    """Pids whose newest decision kept or put them back in the call piles
+    (keep_trying, sent_back, reopened): already decided, so they leave the
+    To validate list of open cases."""
+    if decisions is None or decisions.empty:
+        return set()
+    lp = latest_per_pid(decisions[~decisions["sup_type"].isin(PAPERWORK)])
+    return set(lp.loc[lp["sup_action"].isin(NOTE_ACTIONS), "pid"]) if len(lp) else set()
+
+
 def validated_pids(decisions):
     """Pids whose closure is validated: their newest validation (or reopen)
     entry is a confirm or a correction. A reopen afterwards cancels it, so a

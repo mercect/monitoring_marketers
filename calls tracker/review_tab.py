@@ -116,6 +116,10 @@ def _save(rows, what):
         st.error(f"Not saved — {e}")
         return
     st.cache_data.clear()            # re-read the log and re-run the rollup
+    # Forget the clicked row: the list is shorter after a save, so the same
+    # row number would open a different pid (or none).
+    for k in [k for k in st.session_state.keys() if str(k).startswith("review_list_")]:
+        del st.session_state[k]
     st.session_state[FLASH] = f"✅ Saved {what}."
     st.rerun()
 
@@ -222,9 +226,16 @@ def to_validate(summary, open_cases, decisions, keys):
     res = pd.to_numeric(oc.get("resume_queue", pd.Series(0, index=oc.index)),
                         errors="coerce").fillna(0) == 1
     rev = oc["action_bucket"] == "Review"
-    opn = oc[res | rev].copy()
+    # Decided already: the newest decision on the pid kept it in the call piles
+    # (keep trying, sent back, reopened). Without this a saved decision left
+    # the case in the list, and it kept coming back. It stays editable in
+    # 📄 Everything else.
+    decided = rv.decided_open(decisions)
+    pick = (res | rev) & ~oc["pid"].isin(decided)
+    res, rev = res & pick, rev & pick
+    opn = oc[pick].copy()
     opn["why"] = [" + ".join(g for g, on in ((TO_RESUME, r), (TO_REVIEW, b)) if on)
-                  for r, b in zip(res[res | rev], rev[res | rev])]
+                  for r, b in zip(res[pick], rev[pick])]
     opn["kind"] = "open"
     opn["flag"] = ""
     opn["ref_key"] = opn["pid"].map(keys).fillna("")
@@ -311,7 +322,7 @@ def _validate(todo, others, summary, subs, can_save):
         sel = ch.dataframe(table, hide_index=True, width="stretch", on_select="rerun",
                            selection_mode="single-row", key=f"review_list_{pick}")
     rows = sel.selection.rows if sel is not None else []
-    clicked = table.at[rows[0], "pid"] if rows else None
+    clicked = table.at[rows[0], "pid"] if rows and rows[0] < len(table) else None
 
     st.divider()
     st.markdown("#### Review one pid")
