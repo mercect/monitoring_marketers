@@ -641,8 +641,20 @@ with _filter_box:
     # e.g. 12Nov-D4 on 16-18 Nov); clear it to see every list.
     _active_today = [v for v in active_lists(summary, pd.Timestamp.now(tz="UTC").date())
                      if v in list_options]
+    # `default` only applies the first time the page opens: a tab left open
+    # since yesterday kept yesterday's lists (Do now, Progress, the queues).
+    # Follow today's lists when they change, unless someone picked their own.
+    _ss = st.session_state
+    _prev_auto = _ss.get("flt_lists_auto")
+    if _prev_auto is not None and list(_prev_auto) != _active_today:
+        if "flt_lists" not in _ss or list(_ss["flt_lists"]) == list(_prev_auto):
+            _ss["flt_lists"] = _active_today
+    elif "flt_lists" in _ss:
+        _ss["flt_lists"] = [v for v in _ss["flt_lists"] if v in list_options]
+    _ss["flt_lists_auto"] = _active_today
     picked_lists = st.multiselect("🔎 Filter · Priority list (assigned_list)", list_options,
-                                  default=_active_today, key="flt_lists", placeholder="All lists",
+                                  default=None if "flt_lists" in _ss else _active_today,
+                                  key="flt_lists", placeholder="All lists",
                                   help="Starts on the lists being called today. Pick other "
                                        "call lists, or clear it to see all.")
 base_pids = set(summary.loc[_aday.isin(picked_lists).values, "pid"]) if picked_lists else None
