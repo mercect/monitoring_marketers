@@ -505,6 +505,17 @@ def check_active_lists_and_done(fails):
                ("2026-11-04 08:00:00", "S", "A", "decision", "reopened", "", "again", "a1")])
     ok("a tick from before a later reopen does not count",
        actioned(old, reactivated(old, subs, now)) == {})
+    again = dec([("2026-11-04 08:00:00", "S", "A", "validation", "sent_back", "", "other number", "a1"),
+                 ("2026-11-04 09:00:00", "Sup", "A", "followup", "actioned", "", "", ""),
+                 ("2026-11-04 09:30:00", "S", "A", "decision", "keep_trying", "", "other number", "a1")])
+    ok("saved ACTIVE again after the tick: the tick still counts",
+       "A" in actioned(again, reactivated(again, subs, now)))
+    closed_between = dec([("2026-11-04 08:00:00", "S", "A", "validation", "sent_back", "", "x", "a1"),
+                          ("2026-11-04 09:00:00", "Sup", "A", "followup", "actioned", "", "", ""),
+                          ("2026-11-04 09:10:00", "S", "A", "decision", "closed", "0_R", "refused", "a1"),
+                          ("2026-11-04 09:30:00", "S", "A", "decision", "reopened", "", "retry", "a1")])
+    ok("closed then reopened: a new instruction, the old tick does not count",
+       actioned(closed_between, reactivated(closed_between, subs, now)) == {})
     # called before / after the tick
     from review import called_before_done
     sb = ("2026-11-04 08:00:00", "S", "A", "validation", "sent_back", "", "check number", "a1")

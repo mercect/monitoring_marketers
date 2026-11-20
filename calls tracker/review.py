@@ -514,7 +514,12 @@ def actioned(decisions, react):
     if d.empty:
         return {}
     d["_t"] = pd.to_datetime(d["sup_time"], errors="coerce")
-    since = pd.Series(pd.to_datetime(react["reactivated_at"]).values, index=react["pid"].values)
+    # since the case was first put back to work in this run (run_start), so
+    # saving the same case ACTIVE again does not undo a tick already made
+    start = react["run_start"] if "run_start" in react.columns else react["reactivated_at"]
+    start = pd.to_datetime(start).fillna(pd.to_datetime(react["reactivated_at"]))
+    since = pd.Series(start.values, index=react["pid"].values)
+    since = since[~since.index.duplicated(keep="first")]
     d = d[d["pid"].isin(since.index)]
     d = d[d["_t"] >= d["pid"].map(since)]
     d = d.sort_values("_t").drop_duplicates("pid", keep="last")
@@ -577,8 +582,28 @@ def reactivated(decisions, subs, now):
     lp["_last_call"] = lp["pid"].map(last_call)
     waiting = lp[lp["_last_call"].isna() | (lp["_last_call"] < lp["reactivated_at"])].copy()
     waiting["minutes"] = ((now - waiting["reactivated_at"]).dt.total_seconds() // 60)
+    # When the case was FIRST put back to work in this run: the same case
+    # saved ACTIVE again (keep trying twice, sent back then keep trying) with
+    # no call and no other decision in between is the same instruction, so a
+    # ✔ done tick after the first one still counts (see actioned).
+    nd = decisions[~decisions["sup_type"].isin(PAPERWORK)].copy()
+    nd["_t"] = pd.to_datetime(nd["sup_time"], errors="coerce")
+    nd = nd[nd["pid"].isin(set(waiting["pid"]))].sort_values("_t", kind="stable")
+    first = {}
+    for pid, g in nd.groupby("pid", sort=False):
+        lc = last_call.get(pid, pd.NaT)
+        start = None
+        for a, t in zip(g["sup_action"][::-1], g["_t"][::-1]):
+            if a not in REACTIVATE or (pd.notna(lc) and pd.notna(t) and t <= lc):
+                break
+            start = t
+        first[pid] = start
+    waiting["run_start"] = waiting["pid"].map(first)
+    waiting["run_start"] = waiting["run_start"].where(waiting["run_start"].notna(),
+                                                      waiting["reactivated_at"])
     return pd.DataFrame({"pid": waiting["pid"].values,
                          "reactivated_at": waiting["reactivated_at"].values,
                          "reactivated_by": waiting["sup_by"].values,
                          "supervisor_note": waiting["sup_comment"].values,
-                         "minutes": waiting["minutes"].values})[cols]
+                         "minutes": waiting["minutes"].values,
+                         "run_start": pd.to_datetime(waiting["run_start"]).values})[cols + ["run_start"]]
